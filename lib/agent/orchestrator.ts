@@ -113,7 +113,14 @@ export function createOrchestrator(deps: AgentDependencies) {
       const filtered = filterFlights(session.lastFlightResults, args);
       // Defensive re-sort: lastFlightResults is written sorted below, but a session
       // rehydrated from storage or seeded elsewhere carries no such guarantee.
-      if (filtered.length > 0) return sortByPrice(filtered).slice(0, MAX_RESULTS);
+      if (filtered.length > 0) {
+        const displayed = sortByPrice(filtered).slice(0, MAX_RESULTS);
+        // The table must reflect what the model was just told exists, even on this
+        // cache-hit path where lastFlightResults (the full refinement cache) is left
+        // untouched.
+        session.displayedFlights = displayed;
+        return displayed;
+      }
     }
 
     const raw = await deps.searchFlights({
@@ -148,7 +155,9 @@ export function createOrchestrator(deps: AgentDependencies) {
       cabinClass: args.cabinClass,
     };
 
-    return filterFlights(reranked, args).slice(0, MAX_RESULTS);
+    const displayed = filterFlights(reranked, args).slice(0, MAX_RESULTS);
+    session.displayedFlights = displayed;
+    return displayed;
   }
 
   async function runHotelSearch(args: HotelSearchArgs, session: SessionState): Promise<HotelOffer[]> {
@@ -160,7 +169,11 @@ export function createOrchestrator(deps: AgentDependencies) {
 
     if (stayUnchanged && cached.length > 0) {
       const filtered = filterHotels(cached, args);
-      if (filtered.length > 0) return sortByNightlyPrice(filtered).slice(0, MAX_RESULTS);
+      if (filtered.length > 0) {
+        const displayed = sortByNightlyPrice(filtered).slice(0, MAX_RESULTS);
+        session.displayedHotels = displayed;
+        return displayed;
+      }
     }
 
     const raw = await deps.searchHotels({
@@ -188,7 +201,9 @@ export function createOrchestrator(deps: AgentDependencies) {
       travelers: args.travelers,
     };
 
-    return filterHotels(reranked, args).slice(0, MAX_RESULTS);
+    const displayed = filterHotels(reranked, args).slice(0, MAX_RESULTS);
+    session.displayedHotels = displayed;
+    return displayed;
   }
 
   async function handleTurn(

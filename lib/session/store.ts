@@ -11,6 +11,8 @@ function freshState(sessionId: string): SessionState {
     messages: [],
     lastFlightResults: [],
     lastHotelResults: [],
+    displayedFlights: [],
+    displayedHotels: [],
     lastFlightSearchParams: null,
     lastHotelSearchParams: null,
   };

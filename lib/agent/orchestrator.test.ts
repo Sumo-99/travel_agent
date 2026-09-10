@@ -18,6 +18,8 @@ function freshSession(): SessionState {
     messages: [],
     lastFlightResults: [],
     lastHotelResults: [],
+    displayedFlights: [],
+    displayedHotels: [],
     lastFlightSearchParams: null,
     lastHotelSearchParams: null,
   };
@@ -94,6 +96,31 @@ describe("orchestrator refinement logic", () => {
 
     expect(deps.searchFlights).not.toHaveBeenCalled();
     expect(result).toHaveLength(1);
+  });
+
+  it("writes the filtered set to session.displayedFlights (not the full cache) on a cache-hit refinement, so the table reflects what the model was told", async () => {
+    const session = freshSession();
+    session.lastFlightSearchParams = { ...jfkToLax };
+    session.lastFlightResults = [
+      { ...sampleRaw, id: "cheap", priceUSD: 200, bookingLink: { url: "x", isDirect: true, note: "" } },
+      { ...sampleRaw, id: "pricey", priceUSD: 900, bookingLink: { url: "x", isDirect: true, note: "" } },
+    ];
+
+    const orchestrator = createOrchestrator(deps);
+    const result = await orchestrator.__internal.runFlightSearch(
+      { ...jfkToLax, maxPriceUSD: 500 },
+      session
+    );
+
+    expect(deps.searchFlights).not.toHaveBeenCalled();
+    // The returned/displayed slice is filtered...
+    expect(result.map((r) => r.id)).toEqual(["cheap"]);
+    // ...and the session's "currently displayed" projection matches it...
+    expect(session.displayedFlights.map((r) => r.id)).toEqual(["cheap"]);
+    // ...while the full refinement cache is left untouched (both offers still available
+    // for a future "show me all of them" without a new Amadeus call).
+    expect(session.lastFlightResults).toHaveLength(2);
+    expect(session.displayedFlights).not.toEqual(session.lastFlightResults);
   });
 
   it("calls searchFlights, re-ranks, and does NOT merge in the stale route's offers when the route changes", async () => {
@@ -217,6 +244,10 @@ describe("orchestrator refinement logic", () => {
 
     expect(deps.searchHotels).not.toHaveBeenCalled();
     expect(result.map((h) => h.id)).toEqual(["h1"]);
+    // Same fix as flights: the displayed/table projection reflects the filtered
+    // result on the cache-hit path, distinct from the full lastHotelResults cache.
+    expect(session.displayedHotels.map((h) => h.id)).toEqual(["h1"]);
+    expect(session.lastHotelResults).toHaveLength(2);
   });
 
   it("searches fresh when the city changes even though the dates are identical", async () => {

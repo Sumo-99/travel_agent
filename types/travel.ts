@@ -97,8 +97,20 @@ export interface LastHotelSearchParams {
 export interface SessionState {
   sessionId: string;
   messages: ChatMessage[];
+  // The full, unfiltered, merged-and-reranked cache used to serve future refinements
+  // (a later "actually show me all of them" without a new Amadeus call).
   lastFlightResults: FlightOffer[];
   lastHotelResults: HotelOffer[];
+  // The filtered/sliced set the LLM was just told about — this is what the results
+  // table should render. Written on every runFlightSearch/runHotelSearch exit path,
+  // including the cache-hit path, so the table always matches what the user was told.
+  displayedFlights: FlightOffer[];
+  displayedHotels: HotelOffer[];
   lastFlightSearchParams: LastFlightSearchParams | null;
   lastHotelSearchParams: LastHotelSearchParams | null;
+}
+
+export interface DisplayMessage {
+  role: "user" | "assistant" | "status";
+  text: string;
 }

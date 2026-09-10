@@ -47,19 +47,25 @@ export async function searchHotels(args: SearchHotelsToolArgs): Promise<RawHotel
 
   const nights = nightsBetween(args.checkInDate, args.checkOutDate);
 
-  return response.data.slice(0, args.maxResults ?? 10).map((entry) => {
-    const totalPriceUSD = Number(entry.offers[0]?.price.total ?? 0);
-    return {
-      id: entry.hotel.hotelId,
-      name: entry.hotel.name,
-      chainCode: entry.hotel.chainCode,
-      starRating: entry.hotel.rating ? Number(entry.hotel.rating) : null,
-      address: formatAddress(entry.hotel),
-      cityCode: args.cityCode,
-      checkInDate: args.checkInDate,
-      checkOutDate: args.checkOutDate,
-      pricePerNightUSD: totalPriceUSD / nights,
-      totalPriceUSD,
-    };
-  });
+  return response.data
+    // An entry with no offers has no real price. Defaulting it to $0 would sort it to
+    // the top of the ascending-price list as a phantom "cheapest" hotel with a live
+    // booking link — drop it instead.
+    .filter((entry) => entry.offers.length > 0)
+    .slice(0, args.maxResults ?? 10)
+    .map((entry) => {
+      const totalPriceUSD = Number(entry.offers[0].price.total);
+      return {
+        id: entry.hotel.hotelId,
+        name: entry.hotel.name,
+        chainCode: entry.hotel.chainCode,
+        starRating: entry.hotel.rating ? Number(entry.hotel.rating) : null,
+        address: formatAddress(entry.hotel),
+        cityCode: args.cityCode,
+        checkInDate: args.checkInDate,
+        checkOutDate: args.checkOutDate,
+        pricePerNightUSD: totalPriceUSD / nights,
+        totalPriceUSD,
+      };
+    });
 }

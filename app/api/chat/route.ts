@@ -13,7 +13,10 @@ function formToMessage(form: TripFormInput): string {
   return (
     `Find round-trip domestic US flights from ${form.origin} to ${form.destination}, departing ` +
     `${form.departureDate} and returning ${form.returnDate}, for ${form.travelers} traveler(s) in ` +
-    `${form.cabinClass} cabin class. Also find hotels in ${form.destination} for the same dates.`
+    `${form.cabinClass} cabin class. Also find hotels near ${form.destination}, which is an ` +
+    `AIRPORT IATA code — for the search_hotels call, determine and use the correct 3-letter ` +
+    `Amadeus CITY code for that airport (they differ for many US metros, e.g. JFK/LGA/EWR all ` +
+    `map to city code NYC) rather than passing the airport code straight through, for the same dates.`
   );
 }
 
@@ -38,8 +41,10 @@ export async function POST(req: NextRequest) {
         emit({
           type: "final",
           text: finalText,
-          flights: session.lastFlightResults.slice(0, 10),
-          hotels: session.lastHotelResults.slice(0, 10),
+          // Render what the model was just told exists (the filtered/displayed slice),
+          // not the full unfiltered refinement cache — see SessionState.displayedFlights.
+          flights: session.displayedFlights.slice(0, 10),
+          hotels: session.displayedHotels.slice(0, 10),
         });
       } catch (err) {
         emit({ type: "error", text: err instanceof Error ? err.message : "Unknown error" });

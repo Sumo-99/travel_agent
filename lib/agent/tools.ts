@@ -33,7 +33,13 @@ export const searchHotelsToolSchema = {
     parameters: {
       type: "object",
       properties: {
-        cityCode: { type: "string", description: "3-letter IATA city code, e.g. LAX" },
+        cityCode: {
+          type: "string",
+          description:
+            "3-letter IATA CITY code — NOT necessarily the same as a nearby airport code. " +
+            "E.g. JFK/LGA/EWR all map to city code NYC; ORD/MDW map to CHI. When given an " +
+            "airport code, convert it to the correct city code before calling this tool.",
+        },
         checkInDate: { type: "string", description: "YYYY-MM-DD" },
         checkOutDate: { type: "string", description: "YYYY-MM-DD" },
         travelers: { type: "number" },
