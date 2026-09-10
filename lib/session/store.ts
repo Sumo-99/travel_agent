@@ -12,6 +12,7 @@ function freshState(sessionId: string): SessionState {
     lastFlightResults: [],
     lastHotelResults: [],
     lastFlightSearchParams: null,
+    lastHotelSearchParams: null,
   };
 }
 

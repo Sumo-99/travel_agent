@@ -4,6 +4,7 @@ import type {
   FlightOffer,
   HotelOffer,
   LastFlightSearchParams,
+  LastHotelSearchParams,
   RawFlightOffer,
   RawHotelOffer,
   SearchFlightsToolArgs,
@@ -65,6 +66,24 @@ function sameRoute(a: FlightSearchArgs, cached: LastFlightSearchParams | null): 
   );
 }
 
+function sortByPrice(offers: FlightOffer[]): FlightOffer[] {
+  return [...offers].sort((a, b) => a.priceUSD - b.priceUSD);
+}
+
+function sortByNightlyPrice(offers: HotelOffer[]): HotelOffer[] {
+  return [...offers].sort((a, b) => a.pricePerNightUSD - b.pricePerNightUSD);
+}
+
+function sameHotelStay(a: HotelSearchArgs, cached: LastHotelSearchParams | null): boolean {
+  if (!cached) return false;
+  return (
+    a.cityCode === cached.cityCode &&
+    a.checkInDate === cached.checkInDate &&
+    a.checkOutDate === cached.checkOutDate &&
+    a.travelers === cached.travelers
+  );
+}
+
 function filterFlights(offers: FlightOffer[], args: FlightSearchArgs): FlightOffer[] {
   return offers.filter((o) => {
     if (args.maxPriceUSD !== undefined && o.priceUSD > args.maxPriceUSD) return false;
@@ -88,9 +107,13 @@ export function createOrchestrator(deps: AgentDependencies) {
    * Otherwise search fresh, merge + dedupe by id, re-rank by price, then filter.
    */
   async function runFlightSearch(args: FlightSearchArgs, session: SessionState): Promise<FlightOffer[]> {
-    if (sameRoute(args, session.lastFlightSearchParams) && session.lastFlightResults.length > 0) {
+    const routeUnchanged = sameRoute(args, session.lastFlightSearchParams);
+
+    if (routeUnchanged && session.lastFlightResults.length > 0) {
       const filtered = filterFlights(session.lastFlightResults, args);
-      if (filtered.length > 0) return filtered.slice(0, MAX_RESULTS);
+      // Defensive re-sort: lastFlightResults is written sorted below, but a session
+      // rehydrated from storage or seeded elsewhere carries no such guarantee.
+      if (filtered.length > 0) return sortByPrice(filtered).slice(0, MAX_RESULTS);
     }
 
     const raw = await deps.searchFlights({
@@ -105,9 +128,15 @@ export function createOrchestrator(deps: AgentDependencies) {
     const fresh: FlightOffer[] = raw.map((r) => ({ ...r, bookingLink: deps.buildFlightLink(r) }));
 
     const merged = new Map<string, FlightOffer>();
-    for (const o of session.lastFlightResults) merged.set(o.id, o);
+    // Only top up from the cache when this is the SAME route (a filter the cached set
+    // could not satisfy). If the route changed, seeding from the cache would contaminate
+    // the new route's results with the old route's offers — and, because the merged array
+    // is written back to the session, poison every later refinement of the new route.
+    if (routeUnchanged) {
+      for (const o of session.lastFlightResults) merged.set(o.id, o);
+    }
     for (const o of fresh) merged.set(o.id, o);
-    const reranked = Array.from(merged.values()).sort((a, b) => a.priceUSD - b.priceUSD);
+    const reranked = sortByPrice(Array.from(merged.values()));
 
     session.lastFlightResults = reranked;
     session.lastFlightSearchParams = {
@@ -124,12 +153,14 @@ export function createOrchestrator(deps: AgentDependencies) {
 
   async function runHotelSearch(args: HotelSearchArgs, session: SessionState): Promise<HotelOffer[]> {
     const cached = session.lastHotelResults;
-    const cachedMatchesRoute =
-      cached.length > 0 && cached[0].checkInDate === args.checkInDate && cached[0].checkOutDate === args.checkOutDate;
+    // Cache validity is decided by the recorded search params — city, both dates and
+    // travelers — not by inspecting cached[0]. Matching on dates alone let a search for
+    // a DIFFERENT city reuse the previous city's hotels with no new Amadeus call.
+    const stayUnchanged = sameHotelStay(args, session.lastHotelSearchParams);
 
-    if (cachedMatchesRoute) {
+    if (stayUnchanged && cached.length > 0) {
       const filtered = filterHotels(cached, args);
-      if (filtered.length > 0) return filtered.slice(0, MAX_RESULTS);
+      if (filtered.length > 0) return sortByNightlyPrice(filtered).slice(0, MAX_RESULTS);
     }
 
     const raw = await deps.searchHotels({
@@ -142,11 +173,20 @@ export function createOrchestrator(deps: AgentDependencies) {
     const fresh: HotelOffer[] = raw.map((r) => ({ ...r, bookingLink: deps.buildHotelLink(r) }));
 
     const merged = new Map<string, HotelOffer>();
-    for (const o of cached) merged.set(o.id, o);
+    // Same rule as flights: only top up from the cache when the stay is unchanged.
+    if (stayUnchanged) {
+      for (const o of cached) merged.set(o.id, o);
+    }
     for (const o of fresh) merged.set(o.id, o);
-    const reranked = Array.from(merged.values()).sort((a, b) => a.pricePerNightUSD - b.pricePerNightUSD);
+    const reranked = sortByNightlyPrice(Array.from(merged.values()));
 
     session.lastHotelResults = reranked;
+    session.lastHotelSearchParams = {
+      cityCode: args.cityCode,
+      checkInDate: args.checkInDate,
+      checkOutDate: args.checkOutDate,
+      travelers: args.travelers,
+    };
 
     return filterHotels(reranked, args).slice(0, MAX_RESULTS);
   }
@@ -185,7 +225,6 @@ export function createOrchestrator(deps: AgentDependencies) {
 
       if (toolCalls.length === 0) {
         finalText = choice?.message?.content ?? "";
-        session.messages.push({ role: "assistant", content: finalText });
         break;
       }
 
@@ -228,6 +267,9 @@ export function createOrchestrator(deps: AgentDependencies) {
             resultSummary = JSON.stringify({ error: `Unknown tool ${call.function.name}` });
           }
         } catch (err) {
+          // Surface the failure to the model, but keep it diagnosable server-side —
+          // otherwise a real dependency failure (e.g. an Amadeus 500) leaves no trace.
+          console.error(`[orchestrator] tool ${call.function.name} failed`, err);
           resultSummary = JSON.stringify({
             error: err instanceof Error ? err.message : "Tool execution failed",
           });
@@ -237,7 +279,12 @@ export function createOrchestrator(deps: AgentDependencies) {
       }
     }
 
-    return finalText || "I found some results — check the table for details.";
+    // Push on EVERY exit path, not just the early break: if the loop exhausts
+    // MAX_TOOL_ITERATIONS while still returning tool calls, the fallback text is what
+    // the caller sees, so the transcript must carry it too.
+    const assistantText = finalText || "I found some results — check the table for details.";
+    session.messages.push({ role: "assistant", content: assistantText });
+    return assistantText;
   }
 
   return { handleTurn, __internal: { runFlightSearch, runHotelSearch } };

@@ -87,10 +87,18 @@ export interface LastFlightSearchParams {
   cabinClass: CabinClass;
 }
 
+export interface LastHotelSearchParams {
+  cityCode: string;
+  checkInDate: string;
+  checkOutDate: string;
+  travelers: number;
+}
+
 export interface SessionState {
   sessionId: string;
   messages: ChatMessage[];
   lastFlightResults: FlightOffer[];
   lastHotelResults: HotelOffer[];
   lastFlightSearchParams: LastFlightSearchParams | null;
+  lastHotelSearchParams: LastHotelSearchParams | null;
 }
