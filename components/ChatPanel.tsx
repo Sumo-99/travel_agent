@@ -6,6 +6,11 @@ import type { FlightOffer, HotelOffer, TripFormInput } from "@/types/travel";
 interface ChatPanelProps {
   onResults: (flights: FlightOffer[], hotels: HotelOffer[]) => void;
   externalTrigger: TripFormInput | null;
+  // Set by the parent while a form-submitted search is in flight, so the spec's
+  // "further chat input is disabled until the agent's response completes" rule
+  // holds for BOTH trigger paths (form submit and chat send), not just this
+  // panel's own internal `busy` state. ORed with `busy` below.
+  disabled?: boolean;
 }
 
 interface DisplayMessage {
@@ -13,10 +18,11 @@ interface DisplayMessage {
   text: string;
 }
 
-export function ChatPanel({ onResults, externalTrigger }: ChatPanelProps) {
+export function ChatPanel({ onResults, externalTrigger, disabled = false }: ChatPanelProps) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const effectiveDisabled = busy || disabled;
 
   async function sendTurn(body: { message?: string; formData?: TripFormInput }) {
     setBusy(true);
@@ -53,7 +59,7 @@ export function ChatPanel({ onResults, externalTrigger }: ChatPanelProps) {
   }
 
   function handleSend() {
-    if (!input.trim() || busy) return;
+    if (!input.trim() || effectiveDisabled) return;
     const message = input;
     setInput("");
     void sendTurn({ message });
@@ -76,11 +82,11 @@ export function ChatPanel({ onResults, externalTrigger }: ChatPanelProps) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          disabled={busy}
+          disabled={effectiveDisabled}
           placeholder="Ask about hotel preferences, budget, or refine results…"
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
-        <button onClick={handleSend} disabled={busy}>
+        <button onClick={handleSend} disabled={effectiveDisabled}>
           Send
         </button>
       </div>

@@ -59,6 +59,7 @@ export default function HomePage() {
             <ChatPanel
               key={formSubmitCount}
               externalTrigger={pendingForm}
+              disabled={formBusy}
               onResults={(f, h) => {
                 setFlights(f);
                 setHotels(h);
