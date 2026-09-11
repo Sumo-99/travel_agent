@@ -88,10 +88,10 @@ function getProperties(response: unknown): SerpHotelProperty[] {
   return response.properties.map(asHotelProperty).filter((property): property is SerpHotelProperty => property !== null);
 }
 
-function numberOfNights(args: SearchHotelsToolArgs): number {
+function numberOfNights(args: SearchHotelsToolArgs): number | undefined {
   const checkIn = Date.parse(`${args.checkInDate}T00:00:00Z`);
   const checkOut = Date.parse(`${args.checkOutDate}T00:00:00Z`);
-  if (!Number.isFinite(checkIn) || !Number.isFinite(checkOut) || checkOut <= checkIn) return 1;
+  if (!Number.isFinite(checkIn) || !Number.isFinite(checkOut) || checkOut <= checkIn) return undefined;
 
   return Math.max(1, Math.round((checkOut - checkIn) / (24 * 60 * 60 * 1000)));
 }
@@ -109,8 +109,8 @@ function normalizeProperty(property: SerpHotelProperty, args: SearchHotelsToolAr
   }
 
   const nights = numberOfNights(args);
-  const derivedPricePerNightUSD = nightlyRate ?? (rawTotalRate === undefined || rawTotalRate === null || totalRate === undefined ? undefined : totalRate / nights);
-  const derivedTotalPriceUSD = totalRate ?? (rawNightlyRate === undefined || rawNightlyRate === null || nightlyRate === undefined ? undefined : nightlyRate * nights);
+  const derivedPricePerNightUSD = nightlyRate ?? (nights === undefined || totalRate === undefined ? undefined : totalRate / nights);
+  const derivedTotalPriceUSD = totalRate ?? (nights === undefined || nightlyRate === undefined ? undefined : nightlyRate * nights);
   const pricePerNightUSD = positiveFiniteNumber(derivedPricePerNightUSD);
   const totalPriceUSD = positiveFiniteNumber(derivedTotalPriceUSD);
   if (pricePerNightUSD === undefined || totalPriceUSD === undefined) return null;

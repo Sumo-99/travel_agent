@@ -172,7 +172,7 @@ describe("searchHotels", () => {
     "uses the default result limit for invalid maxResults (%s)",
     async (maxResults) => {
       vi.spyOn(client, "serpApiGet").mockResolvedValue({
-        properties: Array.from({ length: 10 }, (_, index) => ({
+        properties: Array.from({ length: 12 }, (_, index) => ({
           property_token: `token-${index}`,
           name: `Hotel ${index}`,
           rate_per_night: { extracted_lowest: 100 },
@@ -191,6 +191,28 @@ describe("searchHotels", () => {
       expect(offers).toHaveLength(10);
     },
   );
+
+  it("respects an explicit valid maxResults value", async () => {
+    vi.spyOn(client, "serpApiGet").mockResolvedValue({
+      properties: Array.from({ length: 12 }, (_, index) => ({
+        property_token: `token-${index}`,
+        name: `Hotel ${index}`,
+        rate_per_night: { extracted_lowest: 100 },
+        total_rate: { extracted_lowest: 100 },
+      })),
+    });
+
+    const offers = await searchHotels({
+      cityCode: "NYC",
+      checkInDate: "2026-12-01",
+      checkOutDate: "2026-12-02",
+      travelers: 1,
+      maxResults: 2,
+    });
+
+    expect(offers).toHaveLength(2);
+    expect(offers.map(({ id }) => id)).toEqual(["token-0", "token-1"]);
+  });
 
   it("derives a multi-night total from nightly rate when total rate is missing", async () => {
     vi.spyOn(client, "serpApiGet").mockResolvedValue({
@@ -283,6 +305,34 @@ describe("searchHotels", () => {
         totalPriceUSD: 500,
       }),
     ]);
+  });
+
+  it.each([
+    ["invalid", "not-a-date", "2026-12-05"],
+    ["equal", "2026-12-05", "2026-12-05"],
+    ["reversed", "2026-12-06", "2026-12-05"],
+  ])("skips properties that require derived prices for a %s stay range", async (_case, checkInDate, checkOutDate) => {
+    vi.spyOn(client, "serpApiGet").mockResolvedValue({
+      properties: [
+        {
+          property_token: "nightly-only",
+          name: "Nightly Only Hotel",
+          rate_per_night: { extracted_lowest: 125 },
+        },
+        {
+          property_token: "total-only",
+          name: "Total Only Hotel",
+          total_rate: { extracted_lowest: 1000 },
+        },
+      ],
+    });
+
+    await expect(searchHotels({
+      cityCode: "NYC",
+      checkInDate,
+      checkOutDate,
+      travelers: 1,
+    })).resolves.toEqual([]);
   });
 
   it("skips offers when deriving a price produces a non-finite value", async () => {
