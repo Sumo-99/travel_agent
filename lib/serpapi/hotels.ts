@@ -156,6 +156,8 @@ function normalizeProperty(property: SerpHotelProperty, args: SearchHotelsToolAr
 }
 
 export async function searchHotels(args: SearchHotelsToolArgs): Promise<RawHotelOffer[]> {
+  if (numberOfNights(args) === undefined) return [];
+
   // NOTE: cityCode is treated as a free-text location hint, not a strict
   // IATA lookup — Google Hotels accepts natural-language q values. This is
   // an accepted accuracy tradeoff for this migration; a proper IATA-to-city

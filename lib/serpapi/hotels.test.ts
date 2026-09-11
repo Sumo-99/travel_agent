@@ -336,6 +336,27 @@ describe("searchHotels", () => {
     })).resolves.toEqual([]);
   });
 
+  it("skips the provider for an invalid date even when prices are complete", async () => {
+    const spy = vi.spyOn(client, "serpApiGet").mockResolvedValue({
+      properties: [
+        {
+          property_token: "complete-price",
+          name: "Complete Price Hotel",
+          rate_per_night: { extracted_lowest: 125 },
+          total_rate: { extracted_lowest: 500 },
+        },
+      ],
+    });
+
+    await expect(searchHotels({
+      cityCode: "NYC",
+      checkInDate: "2026-02-30",
+      checkOutDate: "2026-03-05",
+      travelers: 1,
+    })).resolves.toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it("skips offers when deriving a price produces a non-finite value", async () => {
     vi.spyOn(client, "serpApiGet").mockResolvedValue({
       properties: [
