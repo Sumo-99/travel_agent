@@ -57,6 +57,15 @@ function isUsableString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getArrayField<T>(response: unknown, field: string): T[] {
+  if (!isRecord(response) || !Array.isArray(response[field])) return [];
+  return response[field] as T[];
+}
+
 function isValidFlightSegment(segment: SerpFlightSegment | null): segment is ValidSerpFlightSegment {
   return Boolean(
     segment &&
@@ -93,8 +102,8 @@ async function fetchBookingLink(bookingToken: string): Promise<{ url?: string; i
     gl: "us",
   });
 
-  const option = response.booking_options
-    ?.map((bookingOption) => bookingOption?.together)
+  const option = getArrayField<SerpBookingOption | null>(response, "booking_options")
+    .map((bookingOption) => bookingOption?.together)
     .find((together) => isUsableString(together?.booking_request?.url));
   const url = option?.booking_request?.url;
   if (!isUsableString(url)) return {};
@@ -121,7 +130,10 @@ export async function searchFlights(args: SearchFlightsToolArgs): Promise<RawFli
   });
 
   const maxResults = args.maxResults ?? 10;
-  const outboundOptions = [...(response.best_flights ?? []), ...(response.other_flights ?? [])].slice(0, maxResults);
+  const outboundOptions = [
+    ...getArrayField<SerpFlightItinerary | null>(response, "best_flights"),
+    ...getArrayField<SerpFlightItinerary | null>(response, "other_flights"),
+  ].slice(0, maxResults);
   const offers: RawFlightOffer[] = [];
   const emittedBookingTokens = new Set<string>();
 
@@ -137,7 +149,10 @@ export async function searchFlights(args: SearchFlightsToolArgs): Promise<RawFli
       hl: "en",
       gl: "us",
     });
-    const returnOptions = [...(returnResponse.best_flights ?? []), ...(returnResponse.other_flights ?? [])];
+    const returnOptions = [
+      ...getArrayField<SerpFlightItinerary | null>(returnResponse, "best_flights"),
+      ...getArrayField<SerpFlightItinerary | null>(returnResponse, "other_flights"),
+    ];
     const outboundSegment = outbound.flights[0];
     const outboundLast = outbound.flights[outbound.flights.length - 1];
     if (!outboundSegment || !outboundLast) continue;
