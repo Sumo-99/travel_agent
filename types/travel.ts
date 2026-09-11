@@ -30,6 +30,8 @@ export interface RawFlightOffer {
   durationMinutes: number;
   priceUSD: number;
   cabinClass: CabinClass;
+  sourceBookingUrl?: string;
+  sourceIsDirect?: boolean;
 }
 
 export interface FlightOffer extends RawFlightOffer {
@@ -47,6 +49,8 @@ export interface RawHotelOffer {
   checkOutDate: string;
   pricePerNightUSD: number;
   totalPriceUSD: number;
+  sourceBookingUrl?: string;
+  sourceIsDirect?: boolean;
 }
 
 export interface HotelOffer extends RawHotelOffer {
