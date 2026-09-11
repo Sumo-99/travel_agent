@@ -16,6 +16,32 @@ const baseOffer: RawHotelOffer = {
 };
 
 describe("buildHotelLink", () => {
+  it("prefers a direct source booking link", () => {
+    const link = buildHotelLink({
+      ...baseOffer,
+      sourceBookingUrl: "https://www.downtownlahotel.com/book/source-token",
+      sourceIsDirect: true,
+    });
+
+    expect(link).toEqual({
+      url: "https://www.downtownlahotel.com/book/source-token",
+      isDirect: true,
+      note: "",
+    });
+  });
+
+  it("preserves a non-direct source booking link with a hotel note", () => {
+    const link = buildHotelLink({
+      ...baseOffer,
+      sourceBookingUrl: "https://www.booking.com/hotel/source-token",
+      sourceIsDirect: false,
+    });
+
+    expect(link.url).toBe("https://www.booking.com/hotel/source-token");
+    expect(link.isDirect).toBe(false);
+    expect(link.note).toContain("Downtown LA Hotel");
+  });
+
   it("returns a direct chain link for a mapped chain code", () => {
     const link = buildHotelLink(baseOffer);
     expect(link.isDirect).toBe(true);

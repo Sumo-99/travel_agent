@@ -45,8 +45,10 @@ describe("ResultsTable", () => {
     expect(screen.getByText("Downtown LA Hotel")).toBeInTheDocument();
   });
 
-  it("always renders the GDS-coverage disclosure note", () => {
+  it("always renders the SerpApi and Google results disclosure note", () => {
     render(<ResultsTable flights={[]} hotels={[]} />);
-    expect(screen.getByText(/southwest/i)).toBeInTheDocument();
+    expect(screen.getByText(/SerpApi via Google Flights and Google Hotels/i)).toBeInTheDocument();
+    expect(screen.getByText(/prices and availability may not be real-time/i)).toBeInTheDocument();
+    expect(screen.getByText(/OTAs, or fallback Google results/i)).toBeInTheDocument();
   });
 });

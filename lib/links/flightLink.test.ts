@@ -20,6 +20,32 @@ const baseOffer: RawFlightOffer = {
 };
 
 describe("buildFlightLink", () => {
+  it("prefers a direct source booking link", () => {
+    const link = buildFlightLink({
+      ...baseOffer,
+      sourceBookingUrl: "https://www.delta.com/booking/source-token",
+      sourceIsDirect: true,
+    });
+
+    expect(link).toEqual({
+      url: "https://www.delta.com/booking/source-token",
+      isDirect: true,
+      note: "",
+    });
+  });
+
+  it("preserves a non-direct source booking link with an airline note", () => {
+    const link = buildFlightLink({
+      ...baseOffer,
+      sourceBookingUrl: "https://www.expedia.com/flight/source-token",
+      sourceIsDirect: false,
+    });
+
+    expect(link.url).toBe("https://www.expedia.com/flight/source-token");
+    expect(link.isDirect).toBe(false);
+    expect(link.note).toContain("Delta Air Lines");
+  });
+
   it("returns a direct carrier link for a mapped carrier code", () => {
     const link = buildFlightLink(baseOffer);
     expect(link.isDirect).toBe(true);

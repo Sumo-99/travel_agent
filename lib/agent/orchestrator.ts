@@ -14,8 +14,8 @@ import type {
 import { searchFlightsToolSchema, searchHotelsToolSchema } from "@/lib/agent/tools";
 
 /**
- * Task 4 is dependency-injected by design: nothing here imports `lib/amadeus/*`
- * or `lib/links/*`. Task 5 wires the concrete implementations in.
+ * Task 4 is dependency-injected by design: nothing here imports provider
+ * implementations directly. Task 5 wires the concrete implementations in.
  */
 export interface AgentDependencies {
   searchFlights: (args: SearchFlightsToolArgs) => Promise<RawFlightOffer[]>;

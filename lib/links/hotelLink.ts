@@ -2,6 +2,14 @@ import { HOTEL_CHAIN_LINK_TEMPLATES, buildGoogleHotelsUrl } from "@/lib/links/ca
 import type { BookingLink, RawHotelOffer } from "@/types/travel";
 
 export function buildHotelLink(offer: RawHotelOffer): BookingLink {
+  if (offer.sourceBookingUrl) {
+    return {
+      url: offer.sourceBookingUrl,
+      isDirect: Boolean(offer.sourceIsDirect),
+      note: offer.sourceIsDirect ? "" : `Booking link may be through a third-party site for ${offer.name}.`,
+    };
+  }
+
   const template = offer.chainCode ? HOTEL_CHAIN_LINK_TEMPLATES[offer.chainCode] : undefined;
   const cityName = offer.address.split(",").pop()?.trim() ?? offer.cityCode;
   const params = { cityName, checkInDate: offer.checkInDate, checkOutDate: offer.checkOutDate };

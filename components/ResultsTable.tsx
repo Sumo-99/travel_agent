@@ -14,8 +14,9 @@ export function ResultsTable({ flights, hotels }: ResultsTableProps) {
   return (
     <div>
       <p style={{ fontSize: 12, color: "#666" }}>
-        Results come from GDS-connected airlines and hotels. Some carriers (notably Southwest) and
-        web-only fares may not appear here.
+        Results come from SerpApi via Google Flights and Google Hotels. Prices and availability may
+        not be real-time, and booking links may lead to airline or hotel sites, OTAs, or fallback
+        Google results.
       </p>
       <div role="tablist" style={{ display: "flex", gap: 8, marginBottom: 8 }}>
         <button role="tab" aria-selected={tab === "flights"} onClick={() => setTab("flights")}>

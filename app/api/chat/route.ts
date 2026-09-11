@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { getOrCreateSessionId, getSession } from "@/lib/session/store";
 import { createOrchestrator } from "@/lib/agent/orchestrator";
-import { searchFlights } from "@/lib/amadeus/flights";
-import { searchHotels } from "@/lib/amadeus/hotels";
+import { searchFlights } from "@/lib/serpapi/flights";
+import { searchHotels } from "@/lib/serpapi/hotels";
 import { buildFlightLink } from "@/lib/links/flightLink";
 import { buildHotelLink } from "@/lib/links/hotelLink";
 import type { TripFormInput } from "@/types/travel";
