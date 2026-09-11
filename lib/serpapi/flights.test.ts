@@ -275,6 +275,67 @@ describe("searchFlights", () => {
     expect(offers[0].id).toBe("booking-token-valid-2");
   });
 
+  it("does not let malformed outbound options consume maxResults", async () => {
+    const spy = vi.spyOn(client, "serpApiGet");
+    spy.mockResolvedValueOnce({
+      best_flights: [
+        {},
+        {
+          flights: [{
+            departure_airport: { id: " JFK ", time: "2026-11-03 08:00" },
+            arrival_airport: { id: " LAX ", time: "2026-11-03 11:20" },
+            airline: " Delta ",
+            flight_number: " DL   204 ",
+          }],
+          total_duration: 380,
+          departure_token: " departure-token-trimmed ",
+        },
+      ],
+    });
+    spy.mockResolvedValueOnce({
+      best_flights: [{
+        flights: [{
+          departure_airport: { id: " LAX ", time: "2026-11-10 13:00" },
+          arrival_airport: { id: " JFK ", time: "2026-11-10 21:15" },
+          airline: "Delta",
+          flight_number: "DL 310",
+        }],
+        total_duration: 315,
+        price: 412,
+        booking_token: " booking-token-trimmed ",
+      }],
+    });
+    spy.mockResolvedValueOnce({
+      booking_options: [{
+        together: { booking_request: { url: " https://delta.com/booking " } },
+      }],
+    });
+
+    const offers = await searchFlights({
+      origin: "JFK",
+      destination: "LAX",
+      departureDate: "2026-11-03",
+      returnDate: "2026-11-10",
+      travelers: 1,
+      cabinClass: "ECONOMY",
+      maxResults: 1,
+    });
+
+    expect(offers).toHaveLength(1);
+    expect(offers[0]).toMatchObject({
+      id: "booking-token-trimmed",
+      carrierCode: "DL",
+      flightNumber: "204",
+      airline: "Delta",
+      origin: "JFK",
+      destination: "LAX",
+      sourceBookingUrl: "https://delta.com/booking",
+    });
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(spy.mock.calls[1][0]).toMatchObject({ departure_token: "departure-token-trimmed" });
+    expect(spy.mock.calls[2][0]).toMatchObject({ booking_token: "booking-token-trimmed" });
+  });
+
   it("skips null, non-object, and malformed top-level responses without throwing", async () => {
     const spy = vi.spyOn(client, "serpApiGet");
     spy.mockResolvedValueOnce(null);

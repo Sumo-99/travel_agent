@@ -49,12 +49,16 @@ const CABIN_CLASS_TO_TRAVEL_CLASS: Record<SearchFlightsToolArgs["cabinClass"], s
 };
 
 function splitCarrierCodeAndNumber(flightNumber: string): { carrierCode: string; number: string } {
-  const [carrierCode, number] = flightNumber.split(" ");
-  return { carrierCode: carrierCode ?? "", number: number ?? flightNumber };
+  const [carrierCode, number] = flightNumber.trim().split(/\s+/);
+  return { carrierCode: carrierCode ?? "", number: number ?? flightNumber.trim() };
 }
 
 function isUsableString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function trimUsableString(value: unknown): string | undefined {
+  return isUsableString(value) ? value.trim() : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -105,8 +109,8 @@ async function fetchBookingLink(bookingToken: string): Promise<{ url?: string; i
   const option = getArrayField<SerpBookingOption | null>(response, "booking_options")
     .map((bookingOption) => bookingOption?.together)
     .find((together) => isUsableString(together?.booking_request?.url));
-  const url = option?.booking_request?.url;
-  if (!isUsableString(url)) return {};
+  const url = trimUsableString(option?.booking_request?.url);
+  if (!url) return {};
 
   return {
     url,
@@ -133,14 +137,16 @@ export async function searchFlights(args: SearchFlightsToolArgs): Promise<RawFli
   const outboundOptions = [
     ...getArrayField<SerpFlightItinerary | null>(response, "best_flights"),
     ...getArrayField<SerpFlightItinerary | null>(response, "other_flights"),
-  ].slice(0, maxResults);
+  ]
+    .filter(isValidItinerary)
+    .filter((outbound) => isUsableString(outbound.departure_token))
+    .slice(0, maxResults);
   const offers: RawFlightOffer[] = [];
   const emittedBookingTokens = new Set<string>();
 
   for (const outbound of outboundOptions) {
-    if (!isValidItinerary(outbound)) continue;
-    const departureToken = outbound.departure_token;
-    if (!isUsableString(departureToken)) continue;
+    const departureToken = trimUsableString(outbound.departure_token);
+    if (!departureToken) continue;
 
     const returnResponse = await serpApiGet<SerpFlightsSearchResponse>({
       engine: "google_flights",
@@ -161,8 +167,8 @@ export async function searchFlights(args: SearchFlightsToolArgs): Promise<RawFli
     for (const returning of returnOptions) {
       if (offers.length >= maxResults) break;
       if (!isValidItinerary(returning)) continue;
-      const bookingToken = returning.booking_token;
-      if (!isUsableString(bookingToken)) continue;
+      const bookingToken = trimUsableString(returning.booking_token);
+      if (!bookingToken) continue;
 
       const inboundFirst = returning.flights[0];
       const inboundLast = returning.flights[returning.flights.length - 1];
@@ -176,11 +182,11 @@ export async function searchFlights(args: SearchFlightsToolArgs): Promise<RawFli
 
       offers.push({
         id: bookingToken,
-        airline: outboundSegment.airline,
+        airline: outboundSegment.airline.trim(),
         carrierCode,
         flightNumber: number,
-        origin: outboundSegment.departure_airport.id,
-        destination: outboundLast.arrival_airport.id,
+        origin: outboundSegment.departure_airport.id.trim(),
+        destination: outboundLast.arrival_airport.id.trim(),
         departureDateTime: outboundSegment.departure_airport.time,
         arrivalDateTime: outboundLast.arrival_airport.time,
         returnDepartureDateTime: inboundFirst.departure_airport.time,
