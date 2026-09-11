@@ -423,6 +423,23 @@ describe("handleTurn tool-calling loop", () => {
     errorSpy.mockRestore();
   });
 
+  it("returns the fallback and records it when the provider returns no choices", async () => {
+    createCompletion.mockResolvedValueOnce({ choices: [] });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const session = freshSession();
+    const orchestrator = createOrchestrator(deps);
+
+    const reply = await orchestrator.handleTurn(session, "JFK to LAX");
+
+    expect(reply).toBe("I found some results — check the table for details.");
+    expect(session.messages.at(-1)).toEqual({ role: "assistant", content: reply });
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[orchestrator] empty completion from provider",
+      { choices: [] }
+    );
+    errorSpy.mockRestore();
+  });
+
   it("records the fallback assistant turn in the transcript when the tool loop is exhausted", async () => {
     // The model never stops calling tools, so the loop runs out of iterations.
     createCompletion.mockResolvedValue(assistantToolCall("search_flights", jfkToLax));

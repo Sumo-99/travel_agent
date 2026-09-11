@@ -235,6 +235,11 @@ export function createOrchestrator(deps: AgentDependencies) {
         tool_choice: "auto",
       });
 
+      if (!completion.choices?.length) {
+        console.error("[orchestrator] empty completion from provider", completion);
+        break;
+      }
+
       const choice = completion.choices[0];
       const toolCalls = choice?.message?.tool_calls ?? [];
 
