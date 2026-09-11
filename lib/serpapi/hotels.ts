@@ -88,10 +88,28 @@ function getProperties(response: unknown): SerpHotelProperty[] {
   return response.properties.map(asHotelProperty).filter((property): property is SerpHotelProperty => property !== null);
 }
 
+function parseCalendarDate(value: string): number | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return undefined;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(0, 0, 0, 0);
+
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return undefined;
+  }
+
+  return date.getTime();
+}
+
 function numberOfNights(args: SearchHotelsToolArgs): number | undefined {
-  const checkIn = Date.parse(`${args.checkInDate}T00:00:00Z`);
-  const checkOut = Date.parse(`${args.checkOutDate}T00:00:00Z`);
-  if (!Number.isFinite(checkIn) || !Number.isFinite(checkOut) || checkOut <= checkIn) return undefined;
+  const checkIn = parseCalendarDate(args.checkInDate);
+  const checkOut = parseCalendarDate(args.checkOutDate);
+  if (checkIn === undefined || checkOut === undefined || checkOut <= checkIn) return undefined;
 
   return Math.max(1, Math.round((checkOut - checkIn) / (24 * 60 * 60 * 1000)));
 }

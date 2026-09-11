@@ -309,6 +309,7 @@ describe("searchHotels", () => {
 
   it.each([
     ["invalid", "not-a-date", "2026-12-05"],
+    ["impossible calendar date", "2026-02-30", "2026-03-05"],
     ["equal", "2026-12-05", "2026-12-05"],
     ["reversed", "2026-12-06", "2026-12-05"],
   ])("skips properties that require derived prices for a %s stay range", async (_case, checkInDate, checkOutDate) => {
