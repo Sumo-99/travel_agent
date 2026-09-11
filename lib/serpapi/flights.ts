@@ -105,7 +105,7 @@ export async function searchFlights(args: SearchFlightsToolArgs): Promise<RawFli
       const inboundFirst = returning.flights[0];
       const inboundLast = returning.flights[returning.flights.length - 1];
       const priceUSD = returning.price ?? outbound.price;
-      if (priceUSD === undefined || priceUSD <= 0) continue;
+      if (priceUSD === undefined || priceUSD <= 0 || !returning.booking_token) continue;
 
       const bookingToken = returning.booking_token;
       const bookingLink = bookingToken ? await fetchBookingLink(bookingToken) : {};

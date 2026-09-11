@@ -169,7 +169,7 @@ describe("searchFlights", () => {
     expect(spy).toHaveBeenCalledTimes(3);
   });
 
-  it("skips incomplete or zero-priced return options and respects maxResults", async () => {
+  it("skips incomplete, zero-priced, or tokenless return options and respects maxResults", async () => {
     const spy = vi.spyOn(client, "serpApiGet");
     spy.mockResolvedValueOnce({
       other_flights: [{
@@ -196,6 +196,8 @@ describe("searchFlights", () => {
             duration: 315,
           }],
           total_duration: 315,
+          price: 315,
+          // A positive price is not enough to emit an offer without this token.
         },
       ],
     });
