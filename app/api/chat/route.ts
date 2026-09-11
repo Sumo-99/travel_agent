@@ -15,8 +15,9 @@ function formToMessage(form: TripFormInput): string {
     `${form.departureDate} and returning ${form.returnDate}, for ${form.travelers} traveler(s) in ` +
     `${form.cabinClass} cabin class. Also find hotels near ${form.destination}, which is an ` +
     `AIRPORT IATA code — for the search_hotels call, determine and use the correct 3-letter ` +
-    `Amadeus CITY code for that airport (they differ for many US metros, e.g. JFK/LGA/EWR all ` +
-    `map to city code NYC) rather than passing the airport code straight through, for the same dates.`
+    `city code in the existing cityCode field. The SerpApi Google Hotels backend treats it as a ` +
+    `location hint, so use the metro/city code when airport and city codes differ (e.g. JFK/LGA/EWR ` +
+    `all map to NYC) rather than passing the airport code straight through, for the same dates.`
   );
 }
 

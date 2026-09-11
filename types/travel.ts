@@ -102,7 +102,7 @@ export interface SessionState {
   sessionId: string;
   messages: ChatMessage[];
   // The full, unfiltered, merged-and-reranked cache used to serve future refinements
-  // (a later "actually show me all of them" without a new Amadeus call).
+  // (a later "actually show me all of them" without a new flight search).
   lastFlightResults: FlightOffer[];
   lastHotelResults: HotelOffer[];
   // The filtered/sliced set the LLM was just told about — this is what the results
