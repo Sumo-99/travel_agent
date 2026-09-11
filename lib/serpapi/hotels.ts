@@ -23,6 +23,19 @@ const KNOWN_OTA_DOMAINS = new Set([
   "agoda.com",
   "trip.com",
   "priceline.com",
+  "kayak.com",
+  "travelocity.com",
+  "orbitz.com",
+  "tripadvisor.com",
+  "hotwire.com",
+  "hotelscombined.com",
+  "trivago.com",
+  "momondo.com",
+  "skyscanner.com",
+  "hostelworld.com",
+  "traveloka.com",
+  "ebookers.com",
+  "wotif.com",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -75,11 +88,28 @@ function getProperties(response: unknown): SerpHotelProperty[] {
   return response.properties.map(asHotelProperty).filter((property): property is SerpHotelProperty => property !== null);
 }
 
+function numberOfNights(args: SearchHotelsToolArgs): number {
+  const checkIn = Date.parse(`${args.checkInDate}T00:00:00Z`);
+  const checkOut = Date.parse(`${args.checkOutDate}T00:00:00Z`);
+  if (!Number.isFinite(checkIn) || !Number.isFinite(checkOut) || checkOut <= checkIn) return 1;
+
+  return Math.max(1, Math.round((checkOut - checkIn) / (24 * 60 * 60 * 1000)));
+}
+
 function normalizeProperty(property: SerpHotelProperty, args: SearchHotelsToolArgs): RawHotelOffer | null {
   if (!isUsableString(property.property_token) || !isUsableString(property.name)) return null;
 
-  const pricePerNightUSD = positiveFiniteNumber(property.rate_per_night?.extracted_lowest);
-  const totalPriceUSD = positiveFiniteNumber(property.total_rate?.extracted_lowest);
+  const rawNightlyRate = property.rate_per_night?.extracted_lowest;
+  const rawTotalRate = property.total_rate?.extracted_lowest;
+  const nightlyRate = positiveFiniteNumber(rawNightlyRate);
+  const totalRate = positiveFiniteNumber(rawTotalRate);
+  if ((rawNightlyRate !== undefined && nightlyRate === undefined) || (rawTotalRate !== undefined && totalRate === undefined)) {
+    return null;
+  }
+
+  const nights = numberOfNights(args);
+  const pricePerNightUSD = nightlyRate ?? (rawTotalRate === undefined || totalRate === undefined ? undefined : totalRate / nights);
+  const totalPriceUSD = totalRate ?? (rawNightlyRate === undefined || nightlyRate === undefined ? undefined : nightlyRate * nights);
   if (pricePerNightUSD === undefined || totalPriceUSD === undefined) return null;
 
   const sourceBookingUrl = usableHttpUrl(property.link);
@@ -105,6 +135,10 @@ function normalizeProperty(property: SerpHotelProperty, args: SearchHotelsToolAr
 }
 
 export async function searchHotels(args: SearchHotelsToolArgs): Promise<RawHotelOffer[]> {
+  // NOTE: cityCode is treated as a free-text location hint, not a strict
+  // IATA lookup — Google Hotels accepts natural-language q values. This is
+  // an accepted accuracy tradeoff for this migration; a proper IATA-to-city
+  // name map is a future improvement.
   const response = await serpApiGet<SerpHotelsResponse>({
     engine: "google_hotels",
     q: `${args.cityCode} hotels`,
@@ -116,8 +150,12 @@ export async function searchHotels(args: SearchHotelsToolArgs): Promise<RawHotel
     gl: "us",
   });
 
+  const maxResults = typeof args.maxResults === "number" && Number.isFinite(args.maxResults) && args.maxResults > 0
+    ? Math.max(1, Math.floor(args.maxResults))
+    : 10;
+
   return getProperties(response)
     .map((property) => normalizeProperty(property, args))
     .filter((offer): offer is RawHotelOffer => offer !== null)
-    .slice(0, args.maxResults ?? 10);
+    .slice(0, maxResults);
 }

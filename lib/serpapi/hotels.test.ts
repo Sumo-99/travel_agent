@@ -135,6 +135,100 @@ describe("searchHotels", () => {
     });
   });
 
+  it("classifies expanded OTA domains as non-direct while preserving provider links", async () => {
+    vi.spyOn(client, "serpApiGet").mockResolvedValue({
+      properties: [
+        {
+          property_token: "kayak-token",
+          name: "Kayak Hotel",
+          link: "https://www.kayak.com/hotels/example",
+          rate_per_night: { extracted_lowest: 100 },
+          total_rate: { extracted_lowest: 700 },
+        },
+        {
+          property_token: "provider-token",
+          name: "Provider Hotel",
+          link: "https://www.examplehotel.com/book",
+          rate_per_night: { extracted_lowest: 110 },
+          total_rate: { extracted_lowest: 770 },
+        },
+      ],
+    });
+
+    const offers = await searchHotels({
+      cityCode: "NYC",
+      checkInDate: "2026-12-01",
+      checkOutDate: "2026-12-08",
+      travelers: 1,
+    });
+
+    expect(offers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "kayak-token", sourceIsDirect: false }),
+      expect.objectContaining({ id: "provider-token", sourceIsDirect: true }),
+    ]));
+  });
+
+  it.each([-1, 0, Number.NaN, Number.POSITIVE_INFINITY])(
+    "uses the default result limit for invalid maxResults (%s)",
+    async (maxResults) => {
+      vi.spyOn(client, "serpApiGet").mockResolvedValue({
+        properties: Array.from({ length: 10 }, (_, index) => ({
+          property_token: `token-${index}`,
+          name: `Hotel ${index}`,
+          rate_per_night: { extracted_lowest: 100 },
+          total_rate: { extracted_lowest: 100 },
+        })),
+      });
+
+      const offers = await searchHotels({
+        cityCode: "NYC",
+        checkInDate: "2026-12-01",
+        checkOutDate: "2026-12-02",
+        travelers: 1,
+        maxResults,
+      });
+
+      expect(offers).toHaveLength(10);
+    },
+  );
+
+  it("derives a multi-night total from nightly rate when total rate is missing", async () => {
+    vi.spyOn(client, "serpApiGet").mockResolvedValue({
+      properties: [
+        {
+          property_token: "nightly-only",
+          name: "Nightly Only Hotel",
+          rate_per_night: { extracted_lowest: 125 },
+        },
+        {
+          property_token: "total-only",
+          name: "Total Only Hotel",
+          total_rate: { extracted_lowest: 1000 },
+        },
+      ],
+    });
+
+    const offers = await searchHotels({
+      cityCode: "NYC",
+      checkInDate: "2026-12-01",
+      checkOutDate: "2026-12-05",
+      travelers: 1,
+    });
+
+    expect(offers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "nightly-only",
+        pricePerNightUSD: 125,
+        totalPriceUSD: 500,
+      }),
+      expect.objectContaining({
+        id: "total-only",
+        pricePerNightUSD: 250,
+        totalPriceUSD: 1000,
+      }),
+    ]));
+  });
+
   it("returns no offers when the top-level properties field is absent or malformed", async () => {
     const spy = vi.spyOn(client, "serpApiGet");
 
