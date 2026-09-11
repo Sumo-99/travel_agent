@@ -61,6 +61,17 @@ function trimUsableString(value: unknown): string | undefined {
   return isUsableString(value) ? value.trim() : undefined;
 }
 
+function usableHttpUrl(value: unknown): string | undefined {
+  if (!isUsableString(value)) return undefined;
+
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -113,10 +124,10 @@ async function fetchBookingLink(bookingToken: string): Promise<{ url?: string; i
       return Boolean(
         isRecord(bookingRequest) &&
           !("post_data" in bookingRequest) &&
-          isUsableString(bookingRequest.url),
+          usableHttpUrl(bookingRequest.url),
       );
     });
-  const url = trimUsableString(option?.booking_request?.url);
+  const url = usableHttpUrl(option?.booking_request?.url);
   if (!url) return {};
 
   return {
