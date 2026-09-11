@@ -118,7 +118,7 @@ describe("orchestrator refinement logic", () => {
     // ...and the session's "currently displayed" projection matches it...
     expect(session.displayedFlights.map((r) => r.id)).toEqual(["cheap"]);
     // ...while the full refinement cache is left untouched (both offers still available
-    // for a future "show me all of them" without a new Amadeus call).
+    // for a future "show me all of them" without a new flight search).
     expect(session.lastFlightResults).toHaveLength(2);
     expect(session.displayedFlights).not.toEqual(session.lastFlightResults);
   });
@@ -402,7 +402,7 @@ describe("handleTurn tool-calling loop", () => {
 
   it("reports a failing tool back to the model rather than throwing out of handleTurn", async () => {
     deps.searchFlights = vi.fn(async () => {
-      throw new Error("Amadeus 500");
+      throw new Error("Search backend 500");
     });
     createCompletion
       .mockResolvedValueOnce(assistantToolCall("search_flights", jfkToLax))
@@ -418,7 +418,7 @@ describe("handleTurn tool-calling loop", () => {
     const toolMessage = createCompletion.mock.calls[1][0].messages.find(
       (m: { role: string }) => m.role === "tool"
     );
-    expect(JSON.parse(toolMessage.content).error).toBe("Amadeus 500");
+    expect(JSON.parse(toolMessage.content).error).toBe("Search backend 500");
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
   });

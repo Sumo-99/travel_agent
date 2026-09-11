@@ -32,7 +32,7 @@ app/
   page.tsx                Main two-panel page
 components/               Trip form, chat, resizable panels, results table
 lib/agent/                Tool schemas and orchestration loop
-lib/amadeus/              Current flight/hotel provider integration
+lib/serpapi/              SerpApi Google Flights/Hotels integration
 lib/links/                Provider and fallback booking-link builders
 lib/session/              In-memory session store
 lib/chat/                 Client-side streaming response reader
@@ -42,19 +42,14 @@ docs/superpowers/         Design specifications and implementation plans
 
 ## Current data provider status
 
-The checked-in implementation currently calls the Amadeus APIs and expects the following variables:
+The Amadeus-to-SerpApi migration is implemented. The checked-in implementation queries SerpApi's Google Flights and Google Hotels engines and expects only these variables:
 
 ```bash
-AMADEUS_CLIENT_ID=your-client-id
-AMADEUS_CLIENT_SECRET=your-client-secret
-# Optional; defaults to https://test.api.amadeus.com
-AMADEUS_BASE_URL=https://test.api.amadeus.com
 OPENROUTER_API_KEY=your-openrouter-key
+SERPAPI_API_KEY=your-serpapi-key
 ```
 
-Create `.env.local` in the project root with those values. The Amadeus test endpoint is suitable for development; use the production endpoint and credentials only when you are ready to do so.
-
-The design spec records a later migration from Amadeus to SerpApi because the Amadeus self-service portal was decommissioned. That migration is described in [`docs/superpowers/plans/2026-09-10-migrate-to-serpapi.md`](docs/superpowers/plans/2026-09-10-migrate-to-serpapi.md), but the migration is not yet reflected in the current `lib/amadeus` implementation.
+Create `.env.local` in the project root with those values. Without valid keys, the app can be linted, built, and tested with mocked provider responses, but it cannot perform live OpenRouter or SerpApi searches. The checked-in tests do not replace a real end-to-end API test with live credentials.
 
 ## Getting started
 
@@ -62,7 +57,7 @@ Requirements:
 
 - Node.js with npm
 - An OpenRouter API key
-- Amadeus API credentials for the current implementation
+- A SerpApi API key
 
 Install dependencies and start the development server:
 
@@ -93,7 +88,9 @@ Because the session store is in memory, sessions are lost when the server restar
 
 ## Booking links and limitations
 
-The app is a search-and-compare tool, not a booking engine. Links are best-effort deep links for supported airlines and hotel chains, or constructed Google Flights/Hotels searches when a direct link cannot be generated. A link may not preserve the exact fare or room displayed in the table.
+The app is a search-and-compare tool, not a booking engine. Flight and hotel results are sourced through SerpApi's Google Flights and Google Hotels engines, so coverage, ranking, prices, and availability reflect those sources and may be stale by the time they are displayed. Google Hotels also receives a place-like query through the existing `cityCode` field, so hotel location matching is best effort.
+
+Links are best-effort direct links for supported airlines and hotel chains, OTA/provider booking links when supplied by the source, or constructed Google Flights/Hotels searches when a direct link cannot be generated. OTA and direct links may lead to different terms, prices, or availability than the result shown. A link may not preserve the exact fare or room displayed in the table.
 
 Prices and availability should always be confirmed on the destination booking site before purchase.
 
@@ -102,3 +99,5 @@ Prices and availability should always be confirmed on the destination booking si
 - [Design specification](docs/superpowers/specs/2026-09-10-travel-booking-agent.md)
 - [Original implementation plan](docs/superpowers/plans/2026-09-10-travel-booking-agent.md)
 - [Amadeus-to-SerpApi migration plan](docs/superpowers/plans/2026-09-10-migrate-to-serpapi.md)
+
+The original design and implementation plan are retained as historical documents; they may still contain Amadeus references. The migration plan documents the completed SerpApi migration and its implementation constraints.

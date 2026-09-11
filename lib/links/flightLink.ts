@@ -2,6 +2,14 @@ import { CARRIER_LINK_TEMPLATES, buildGoogleFlightsUrl } from "@/lib/links/carri
 import type { BookingLink, RawFlightOffer } from "@/types/travel";
 
 export function buildFlightLink(offer: RawFlightOffer): BookingLink {
+  if (offer.sourceBookingUrl) {
+    return {
+      url: offer.sourceBookingUrl,
+      isDirect: Boolean(offer.sourceIsDirect),
+      note: offer.sourceIsDirect ? "" : `Booking link may be through a third-party site for ${offer.airline}.`,
+    };
+  }
+
   const template = CARRIER_LINK_TEMPLATES[offer.carrierCode];
   const params = {
     origin: offer.origin,

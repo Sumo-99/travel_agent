@@ -30,6 +30,8 @@ export interface RawFlightOffer {
   durationMinutes: number;
   priceUSD: number;
   cabinClass: CabinClass;
+  sourceBookingUrl?: string;
+  sourceIsDirect?: boolean;
 }
 
 export interface FlightOffer extends RawFlightOffer {
@@ -47,6 +49,8 @@ export interface RawHotelOffer {
   checkOutDate: string;
   pricePerNightUSD: number;
   totalPriceUSD: number;
+  sourceBookingUrl?: string;
+  sourceIsDirect?: boolean;
 }
 
 export interface HotelOffer extends RawHotelOffer {
@@ -98,7 +102,7 @@ export interface SessionState {
   sessionId: string;
   messages: ChatMessage[];
   // The full, unfiltered, merged-and-reranked cache used to serve future refinements
-  // (a later "actually show me all of them" without a new Amadeus call).
+  // (a later "actually show me all of them" without a new flight search).
   lastFlightResults: FlightOffer[];
   lastHotelResults: HotelOffer[];
   // The filtered/sliced set the LLM was just told about — this is what the results

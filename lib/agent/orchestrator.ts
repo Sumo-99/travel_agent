@@ -14,8 +14,8 @@ import type {
 import { searchFlightsToolSchema, searchHotelsToolSchema } from "@/lib/agent/tools";
 
 /**
- * Task 4 is dependency-injected by design: nothing here imports `lib/amadeus/*`
- * or `lib/links/*`. Task 5 wires the concrete implementations in.
+ * Task 4 is dependency-injected by design: nothing here imports provider
+ * implementations directly. Task 5 wires the concrete implementations in.
  */
 export interface AgentDependencies {
   searchFlights: (args: SearchFlightsToolArgs) => Promise<RawFlightOffer[]>;
@@ -164,7 +164,7 @@ export function createOrchestrator(deps: AgentDependencies) {
     const cached = session.lastHotelResults;
     // Cache validity is decided by the recorded search params — city, both dates and
     // travelers — not by inspecting cached[0]. Matching on dates alone let a search for
-    // a DIFFERENT city reuse the previous city's hotels with no new Amadeus call.
+    // a DIFFERENT city reuse the previous city's hotels with no new hotel search.
     const stayUnchanged = sameHotelStay(args, session.lastHotelSearchParams);
 
     if (stayUnchanged && cached.length > 0) {
@@ -283,7 +283,7 @@ export function createOrchestrator(deps: AgentDependencies) {
           }
         } catch (err) {
           // Surface the failure to the model, but keep it diagnosable server-side —
-          // otherwise a real dependency failure (e.g. an Amadeus 500) leaves no trace.
+          // otherwise a real search backend failure (e.g. a provider 500) leaves no trace.
           console.error(`[orchestrator] tool ${call.function.name} failed`, err);
           resultSummary = JSON.stringify({
             error: err instanceof Error ? err.message : "Tool execution failed",
