@@ -1,0 +1,157 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as client from "@/lib/serpapi/client";
+import { searchHotels } from "@/lib/serpapi/hotels";
+
+describe("searchHotels", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("queries Google Hotels and normalizes direct and OTA properties", async () => {
+    const spy = vi.spyOn(client, "serpApiGet").mockImplementation(async (params) => {
+      expect(params).toEqual({
+        engine: "google_hotels",
+        q: "Los Angeles hotels",
+        check_in_date: "2026-11-03",
+        check_out_date: "2026-11-10",
+        adults: "2",
+        currency: "USD",
+        hl: "en",
+        gl: "us",
+      });
+
+      return {
+        properties: [
+          {
+            property_token: "direct-token",
+            name: "Downtown LA Hotel",
+            extracted_hotel_class: 4,
+            hotel_class: "4-star hotel",
+            address: "123 Main St, Los Angeles, CA",
+            link: "https://www.downtownlahotel.com/book",
+            rate_per_night: { extracted_lowest: 180 },
+            total_rate: { extracted_lowest: 1260 },
+          },
+          {
+            property_token: "ota-token",
+            name: "Beachside Inn",
+            hotel_class: "3-star hotel",
+            address: "456 Ocean Ave, Los Angeles, CA",
+            link: "https://www.booking.com/hotel/us/beachside.html",
+            rate_per_night: { extracted_lowest: 150 },
+            total_rate: { extracted_lowest: 1050 },
+          },
+        ],
+      };
+    });
+
+    const offers = await searchHotels({
+      cityCode: "Los Angeles",
+      checkInDate: "2026-11-03",
+      checkOutDate: "2026-11-10",
+      travelers: 2,
+    });
+
+    expect(offers).toEqual([
+      {
+        id: "direct-token",
+        name: "Downtown LA Hotel",
+        chainCode: null,
+        starRating: 4,
+        address: "123 Main St, Los Angeles, CA",
+        cityCode: "Los Angeles",
+        checkInDate: "2026-11-03",
+        checkOutDate: "2026-11-10",
+        pricePerNightUSD: 180,
+        totalPriceUSD: 1260,
+        sourceBookingUrl: "https://www.downtownlahotel.com/book",
+        sourceIsDirect: true,
+      },
+      {
+        id: "ota-token",
+        name: "Beachside Inn",
+        chainCode: null,
+        starRating: 3,
+        address: "456 Ocean Ave, Los Angeles, CA",
+        cityCode: "Los Angeles",
+        checkInDate: "2026-11-03",
+        checkOutDate: "2026-11-10",
+        pricePerNightUSD: 150,
+        totalPriceUSD: 1050,
+        sourceBookingUrl: "https://www.booking.com/hotel/us/beachside.html",
+        sourceIsDirect: false,
+      },
+    ]);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips malformed or non-positive priced properties and respects maxResults after normalization", async () => {
+    vi.spyOn(client, "serpApiGet").mockResolvedValue({
+      properties: [
+        null,
+        {},
+        {
+          property_token: "no-price",
+          name: "No Price Hotel",
+          rate_per_night: { extracted_lowest: 0 },
+          total_rate: { extracted_lowest: 100 },
+        },
+        {
+          property_token: "nan-price",
+          name: "Invalid Price Hotel",
+          rate_per_night: { extracted_lowest: "not-a-number" },
+          total_rate: { extracted_lowest: 100 },
+        },
+        {
+          property_token: "valid-1",
+          name: "Valid One",
+          rate_per_night: { extracted_lowest: 101 },
+          total_rate: { extracted_lowest: 606 },
+        },
+        {
+          property_token: "valid-2",
+          name: "Valid Two",
+          hotel_class: "5-star hotel",
+          rate_per_night: { extracted_lowest: 202 },
+          total_rate: { extracted_lowest: 1212 },
+        },
+      ],
+    });
+
+    const offers = await searchHotels({
+      cityCode: "NYC",
+      checkInDate: "2026-12-01",
+      checkOutDate: "2026-12-07",
+      travelers: 1,
+      maxResults: 1,
+    });
+
+    expect(offers).toHaveLength(1);
+    expect(offers[0]).toMatchObject({
+      id: "valid-1",
+      name: "Valid One",
+      starRating: null,
+      address: "",
+      pricePerNightUSD: 101,
+      totalPriceUSD: 606,
+    });
+  });
+
+  it("returns no offers when the top-level properties field is absent or malformed", async () => {
+    const spy = vi.spyOn(client, "serpApiGet");
+
+    spy.mockResolvedValueOnce({});
+    await expect(searchHotels({
+      cityCode: "SEA",
+      checkInDate: "2026-12-01",
+      checkOutDate: "2026-12-07",
+      travelers: 1,
+    })).resolves.toEqual([]);
+
+    spy.mockResolvedValueOnce({ properties: "not-an-array" });
+    await expect(searchHotels({
+      cityCode: "SEA",
+      checkInDate: "2026-12-01",
+      checkOutDate: "2026-12-07",
+      travelers: 1,
+    })).resolves.toEqual([]);
+  });
+});
