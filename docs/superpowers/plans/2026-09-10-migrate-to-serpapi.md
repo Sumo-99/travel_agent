@@ -219,7 +219,25 @@ git commit -m "feat: add SerpApi client and extend Raw offer types for source bo
 - Consumes: `serpApiGet` from `lib/serpapi/client.ts` (Task 1). Consumes `RawFlightOffer`, `SearchFlightsToolArgs`, `CabinClass` from `types/travel.ts`.
 - Produces: `searchFlights(args: SearchFlightsToolArgs): Promise<RawFlightOffer[]>` — **exact same signature** as the retired `lib/amadeus/flights.ts` export, so `app/api/chat/route.ts` only needs its import path changed (Task 4), not its call site.
 
-Google Flights round-trip search via SerpApi is a two-step lookup: (1) the initial search returns itineraries each carrying a `booking_token`; (2) a follow-up request with that token returns the actual booking options (which provider, and whether it's the airline itself or an OTA). Verify both response shapes live against SerpApi's "Google Flights API" documentation via `context7`/`WebFetch` before finalizing field names — the shapes below are this plan's best-effort mapping and are the thing most likely to need a small field-name correction once you see a real response.
+Google Flights round-trip search via SerpApi has three logical stages:
+
+1. The initial `type=1` search returns outbound options. Each selected outbound
+   option carries a `departure_token`; this token must be sent in a second request
+   to retrieve its available return-flight options.
+2. The implementation combines one outbound option with one return option into
+   the app's `RawFlightOffer` shape. The return-search response is the source of
+   the complete itinerary's `booking_token` when available.
+3. A third request with that `booking_token` retrieves `booking_options`, whose
+   `together.booking_request.url` is the best available booking URL. Use
+   `together.airline` to determine whether the seller is the operating airline;
+   do not infer this by comparing seller and airline names.
+
+The implementation must not treat `booking_token` as the return-leg token:
+SerpApi documents `departure_token` for selecting return flights and
+`booking_token` for retrieving booking options, and the two parameters cannot
+be used together. Verify the exact response shape live against SerpApi's
+official Google Flights, Results, and Booking Options documentation via
+`context7`/`WebFetch` before finalizing field mappings.
 
 - [ ] **Step 1: Write the failing test for the happy path**
 
@@ -232,38 +250,58 @@ import { searchFlights } from "@/lib/serpapi/flights";
 describe("searchFlights", () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it("normalizes a Google Flights search + booking-token lookup into RawFlightOffer[]", async () => {
+  it("retrieves the return leg with departure_token, then resolves booking options", async () => {
     const spy = vi.spyOn(client, "serpApiGet");
 
+    // Initial round-trip search: the result is the outbound leg and carries a
+    // departure_token for retrieving return options.
     spy.mockImplementationOnce(async () => ({
       best_flights: [
         {
-          flights: [
-            {
-              departure_airport: { id: "JFK", time: "2026-11-03 08:00" },
-              arrival_airport: { id: "LAX", time: "2026-11-03 11:20" },
-              airline: "Delta",
-              flight_number: "DL 204",
-            },
-            {
-              departure_airport: { id: "LAX", time: "2026-11-10 13:00" },
-              arrival_airport: { id: "JFK", time: "2026-11-10 21:15" },
-              airline: "Delta",
-              flight_number: "DL 310",
-            },
-          ],
+          flights: [{
+            departure_airport: { id: "JFK", time: "2026-11-03 08:00" },
+            arrival_airport: { id: "LAX", time: "2026-11-03 11:20" },
+            airline: "Delta",
+            flight_number: "DL 204",
+            duration: 380,
+          }],
           total_duration: 380,
-          price: 412,
-          booking_token: "token-abc",
+          departure_token: "departure-token-abc",
         },
       ],
     }));
 
+    // Return-leg lookup: this response supplies the available return options
+    // and the booking token used by the next request.
+    spy.mockImplementationOnce(async (params) => {
+      expect(params).toMatchObject({
+        engine: "google_flights",
+        departure_token: "departure-token-abc",
+      });
+      return {
+        best_flights: [{
+          flights: [{
+            departure_airport: { id: "LAX", time: "2026-11-10 13:00" },
+            arrival_airport: { id: "JFK", time: "2026-11-10 21:15" },
+            airline: "Delta",
+            flight_number: "DL 310",
+            duration: 315,
+          }],
+          total_duration: 315,
+          price: 412,
+          booking_token: "booking-token-abc",
+        }],
+      };
+    });
+
+    // Booking-options lookup: the seller's explicit airline boolean is the
+    // source of truth for directness.
     spy.mockImplementationOnce(async () => ({
       booking_options: [
         {
           together: {
             book_with: "Delta",
+            airline: true,
             booking_request: { url: "https://www.delta.com/booking/token-abc" },
           },
         },
@@ -291,37 +329,46 @@ describe("searchFlights", () => {
       sourceBookingUrl: "https://www.delta.com/booking/token-abc",
       sourceIsDirect: true,
     });
-    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy).toHaveBeenCalledTimes(3);
   });
 
   it("marks sourceIsDirect false when the booking option is an OTA, not the airline", async () => {
     const spy = vi.spyOn(client, "serpApiGet");
+    // Initial outbound search.
     spy.mockImplementationOnce(async () => ({
       best_flights: [
         {
-          flights: [
-            {
-              departure_airport: { id: "JFK", time: "2026-11-03 08:00" },
-              arrival_airport: { id: "LAX", time: "2026-11-03 11:20" },
-              airline: "Frontier",
-              flight_number: "F9 100",
-            },
-            {
-              departure_airport: { id: "LAX", time: "2026-11-10 13:00" },
-              arrival_airport: { id: "JFK", time: "2026-11-10 21:15" },
-              airline: "Frontier",
-              flight_number: "F9 200",
-            },
-          ],
-          total_duration: 400,
-          price: 220,
-          booking_token: "token-xyz",
+          flights: [{
+            departure_airport: { id: "JFK", time: "2026-11-03 08:00" },
+            arrival_airport: { id: "LAX", time: "2026-11-03 11:20" },
+            airline: "Frontier",
+            flight_number: "F9 100",
+            duration: 320,
+          }],
+          total_duration: 320,
+          departure_token: "departure-token-xyz",
         },
       ],
     }));
+    // Return-leg lookup.
+    spy.mockImplementationOnce(async () => ({
+      best_flights: [{
+        flights: [{
+          departure_airport: { id: "LAX", time: "2026-11-10 13:00" },
+          arrival_airport: { id: "JFK", time: "2026-11-10 21:15" },
+          airline: "Frontier",
+          flight_number: "F9 200",
+          duration: 375,
+        }],
+        total_duration: 375,
+        price: 220,
+        booking_token: "booking-token-xyz",
+      }],
+    }));
+    // Booking-options lookup for an OTA seller.
     spy.mockImplementationOnce(async () => ({
       booking_options: [
-        { together: { book_with: "Expedia", booking_request: { url: "https://expedia.com/x" } } },
+        { together: { book_with: "Expedia", airline: false, booking_request: { url: "https://expedia.com/x" } } },
       ],
     }));
 
@@ -336,6 +383,7 @@ describe("searchFlights", () => {
 
     expect(offers[0].sourceIsDirect).toBe(false);
     expect(offers[0].sourceBookingUrl).toBe("https://expedia.com/x");
+    expect(spy).toHaveBeenCalledTimes(3);
   });
 });
 ```
@@ -356,13 +404,15 @@ interface SerpFlightSegment {
   arrival_airport: { id: string; time: string };
   airline: string;
   flight_number: string; // e.g. "DL 204"
+  duration?: number; // minutes
 }
 
 interface SerpFlightItinerary {
   flights: SerpFlightSegment[];
   total_duration: number; // minutes
-  price: number;
-  booking_token: string;
+  price?: number;
+  departure_token?: string;
+  booking_token?: string;
 }
 
 interface SerpFlightsSearchResponse {
@@ -373,6 +423,7 @@ interface SerpFlightsSearchResponse {
 interface SerpBookingOption {
   together?: {
     book_with: string;
+    airline?: boolean;
     booking_request: { url: string };
   };
 }
@@ -393,24 +444,12 @@ function splitCarrierCodeAndNumber(flightNumber: string): { carrierCode: string;
   return { carrierCode: carrierCode ?? "", number: number ?? flightNumber };
 }
 
-function isDirectBooking(bookWith: string, airline: string): boolean {
-  const normalizedBookWith = bookWith.trim().toLowerCase();
-  const normalizedAirline = airline.trim().toLowerCase();
-  return normalizedBookWith === normalizedAirline || normalizedAirline.includes(normalizedBookWith);
-}
-
 async function fetchBookingLink(
   bookingToken: string,
-  args: SearchFlightsToolArgs,
-  airline: string
 ): Promise<{ url?: string; isDirect?: boolean }> {
   const response = await serpApiGet<SerpBookingOptionsResponse>({
     engine: "google_flights",
     booking_token: bookingToken,
-    departure_id: args.origin,
-    arrival_id: args.destination,
-    outbound_date: args.departureDate,
-    return_date: args.returnDate,
     currency: "USD",
     hl: "en",
     gl: "us",
@@ -421,7 +460,7 @@ async function fetchBookingLink(
 
   return {
     url: option.booking_request.url,
-    isDirect: isDirectBooking(option.book_with, airline),
+    isDirect: Boolean(option.airline),
   };
 }
 
@@ -440,41 +479,54 @@ export async function searchFlights(args: SearchFlightsToolArgs): Promise<RawFli
     gl: "us",
   });
 
-  const itineraries = [...(response.best_flights ?? []), ...(response.other_flights ?? [])].slice(
-    0,
-    args.maxResults ?? 10
-  );
+  const outboundOptions = [...(response.best_flights ?? []), ...(response.other_flights ?? [])].slice(0, args.maxResults ?? 10);
 
   const offers: RawFlightOffer[] = [];
 
-  for (const itinerary of itineraries) {
-    const outboundSegment = itinerary.flights[0];
-    const lastOutboundIndex = Math.ceil(itinerary.flights.length / 2) - 1;
-    const outboundLast = itinerary.flights[lastOutboundIndex];
-    const inboundFirst = itinerary.flights[lastOutboundIndex + 1] ?? outboundLast;
-    const inboundLast = itinerary.flights[itinerary.flights.length - 1];
+  for (const outbound of outboundOptions) {
+    if (!outbound.departure_token || outbound.flights.length === 0) continue;
+
+    const returnResponse = await serpApiGet<SerpFlightsSearchResponse>({
+      engine: "google_flights",
+      departure_token: outbound.departure_token,
+      currency: "USD",
+      hl: "en",
+      gl: "us",
+    });
+    const returnOptions = [...(returnResponse.best_flights ?? []), ...(returnResponse.other_flights ?? [])];
+    const outboundSegment = outbound.flights[0];
+    const outboundLast = outbound.flights[outbound.flights.length - 1];
     const { carrierCode, number } = splitCarrierCodeAndNumber(outboundSegment.flight_number);
 
-    const bookingLink = await fetchBookingLink(itinerary.booking_token, args, outboundSegment.airline);
+    for (const returning of returnOptions) {
+      if (offers.length >= (args.maxResults ?? 10) || returning.flights.length === 0) break;
+      const inboundFirst = returning.flights[0];
+      const inboundLast = returning.flights[returning.flights.length - 1];
+      const priceUSD = returning.price ?? outbound.price;
+      if (priceUSD === undefined) continue;
 
-    offers.push({
-      id: itinerary.booking_token,
-      airline: outboundSegment.airline,
-      carrierCode,
-      flightNumber: number,
-      origin: outboundSegment.departure_airport.id,
-      destination: outboundLast.arrival_airport.id,
-      departureDateTime: outboundSegment.departure_airport.time,
-      arrivalDateTime: outboundLast.arrival_airport.time,
-      returnDepartureDateTime: inboundFirst.departure_airport.time,
-      returnArrivalDateTime: inboundLast.arrival_airport.time,
-      stops: lastOutboundIndex,
-      durationMinutes: itinerary.total_duration,
-      priceUSD: itinerary.price,
-      cabinClass: args.cabinClass,
-      sourceBookingUrl: bookingLink.url,
-      sourceIsDirect: bookingLink.isDirect,
-    });
+      const bookingToken = returning.booking_token ?? outbound.booking_token;
+      const bookingLink = bookingToken ? await fetchBookingLink(bookingToken) : {};
+
+      offers.push({
+        id: bookingToken ?? `${outbound.departure_token}:${inboundFirst.departure_airport.time}`,
+        airline: outboundSegment.airline,
+        carrierCode,
+        flightNumber: number,
+        origin: outboundSegment.departure_airport.id,
+        destination: outboundLast.arrival_airport.id,
+        departureDateTime: outboundSegment.departure_airport.time,
+        arrivalDateTime: outboundLast.arrival_airport.time,
+        returnDepartureDateTime: inboundFirst.departure_airport.time,
+        returnArrivalDateTime: inboundLast.arrival_airport.time,
+        stops: Math.max(0, outbound.flights.length - 1),
+        durationMinutes: outbound.total_duration + returning.total_duration,
+        priceUSD,
+        cabinClass: args.cabinClass,
+        sourceBookingUrl: bookingLink.url,
+        sourceIsDirect: bookingLink.isDirect,
+      });
+    }
   }
 
   return offers;
