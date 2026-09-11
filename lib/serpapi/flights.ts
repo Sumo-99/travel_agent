@@ -168,8 +168,19 @@ export async function searchFlights(args: SearchFlightsToolArgs): Promise<RawFli
     const departureToken = trimUsableString(outbound.departure_token);
     if (!departureToken) continue;
 
+    // SerpApi's round-trip flow requires the ORIGINAL search params to be resent
+    // alongside departure_token for the return leg — sending departure_token alone
+    // gets rejected with "Missing departure_id parameter" even though departure_id
+    // is logically redundant once you have the token.
     const returnResponse = await serpApiGet<SerpFlightsSearchResponse>({
       engine: "google_flights",
+      departure_id: args.origin,
+      arrival_id: args.destination,
+      outbound_date: args.departureDate,
+      return_date: args.returnDate,
+      adults: String(args.travelers),
+      travel_class: CABIN_CLASS_TO_TRAVEL_CLASS[args.cabinClass],
+      type: "1",
       departure_token: departureToken,
       currency: "USD",
       hl: "en",

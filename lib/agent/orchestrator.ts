@@ -40,7 +40,7 @@ export interface HotelSearchArgs {
   minStarRating?: number;
 }
 
-const MODEL = "nvidia/nemotron-3.5-lightning:free";
+const MODEL = "inclusionai/ling-3.0-flash-vl:free";
 const MAX_TOOL_ITERATIONS = 4;
 const MAX_RESULTS = 10;
 
@@ -89,6 +89,13 @@ function filterFlights(offers: FlightOffer[], args: FlightSearchArgs): FlightOff
     if (args.maxPriceUSD !== undefined && o.priceUSD > args.maxPriceUSD) return false;
     if (args.maxStops !== undefined && o.stops > args.maxStops) return false;
     return true;
+  });
+}
+
+function missingRequiredArgs(args: Record<string, unknown>, required: readonly string[]): string[] {
+  return required.filter((key) => {
+    const value = args[key];
+    return value === undefined || value === null || value === "";
   });
 }
 
@@ -267,22 +274,41 @@ export function createOrchestrator(deps: AgentDependencies) {
           const args = JSON.parse(call.function.arguments || "{}");
 
           if (call.function.name === "search_flights") {
-            onStatus?.("Searching flights…");
-            const offers = await runFlightSearch(args as FlightSearchArgs, session);
-            resultSummary = JSON.stringify(
-              offers.map((o) => ({ id: o.id, airline: o.airline, priceUSD: o.priceUSD, stops: o.stops }))
-            );
+            // Some models drop required arguments even when the value was just supplied
+            // in conversation (observed with inclusionai/ling-3.0-flash-vl dropping
+            // `origin` on a follow-up turn). Catching that here — before it reaches
+            // SerpApi — turns a raw provider 400 into a message the model can act on,
+            // e.g. by re-calling the tool with the missing field filled in.
+            const missing = missingRequiredArgs(args, searchFlightsToolSchema.function.parameters.required);
+            if (missing.length > 0) {
+              resultSummary = JSON.stringify({
+                error: `Missing required argument(s) for search_flights: ${missing.join(", ")}. Re-call search_flights with the complete set of fields.`,
+              });
+            } else {
+              onStatus?.("Searching flights…");
+              const offers = await runFlightSearch(args as FlightSearchArgs, session);
+              resultSummary = JSON.stringify(
+                offers.map((o) => ({ id: o.id, airline: o.airline, priceUSD: o.priceUSD, stops: o.stops }))
+              );
+            }
           } else if (call.function.name === "search_hotels") {
-            onStatus?.("Searching hotels…");
-            const offers = await runHotelSearch(args as HotelSearchArgs, session);
-            resultSummary = JSON.stringify(
-              offers.map((o) => ({
-                id: o.id,
-                name: o.name,
-                pricePerNightUSD: o.pricePerNightUSD,
-                starRating: o.starRating,
-              }))
-            );
+            const missing = missingRequiredArgs(args, searchHotelsToolSchema.function.parameters.required);
+            if (missing.length > 0) {
+              resultSummary = JSON.stringify({
+                error: `Missing required argument(s) for search_hotels: ${missing.join(", ")}. Re-call search_hotels with the complete set of fields.`,
+              });
+            } else {
+              onStatus?.("Searching hotels…");
+              const offers = await runHotelSearch(args as HotelSearchArgs, session);
+              resultSummary = JSON.stringify(
+                offers.map((o) => ({
+                  id: o.id,
+                  name: o.name,
+                  pricePerNightUSD: o.pricePerNightUSD,
+                  starRating: o.starRating,
+                }))
+              );
+            }
           } else {
             resultSummary = JSON.stringify({ error: `Unknown tool ${call.function.name}` });
           }
