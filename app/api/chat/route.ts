@@ -27,10 +27,18 @@ export async function POST(req: NextRequest) {
   const body = (await req.json()) as { message?: string; formData?: TripFormInput };
   const userMessage = body.formData ? formToMessage(body.formData) : body.message ?? "";
 
+  let closed = false;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const encoder = new TextEncoder();
-      const emit = (payload: unknown) => controller.enqueue(encoder.encode(JSON.stringify(payload) + "\n"));
+      const emit = (payload: unknown) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(payload) + "\n"));
+        } catch {
+          closed = true;
+        }
+      };
 
       try {
         // handleTurn pushes the final assistant message onto session.messages itself
@@ -50,8 +58,11 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         emit({ type: "error", text: err instanceof Error ? err.message : "Unknown error" });
       } finally {
-        controller.close();
+        if (!closed) controller.close();
       }
+    },
+    cancel() {
+      closed = true;
     },
   });
 
