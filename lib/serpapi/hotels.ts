@@ -108,8 +108,10 @@ function normalizeProperty(property: SerpHotelProperty, args: SearchHotelsToolAr
   }
 
   const nights = numberOfNights(args);
-  const pricePerNightUSD = nightlyRate ?? (rawTotalRate === undefined || totalRate === undefined ? undefined : totalRate / nights);
-  const totalPriceUSD = totalRate ?? (rawNightlyRate === undefined || nightlyRate === undefined ? undefined : nightlyRate * nights);
+  const derivedPricePerNightUSD = nightlyRate ?? (rawTotalRate === undefined || totalRate === undefined ? undefined : totalRate / nights);
+  const derivedTotalPriceUSD = totalRate ?? (rawNightlyRate === undefined || nightlyRate === undefined ? undefined : nightlyRate * nights);
+  const pricePerNightUSD = positiveFiniteNumber(derivedPricePerNightUSD);
+  const totalPriceUSD = positiveFiniteNumber(derivedTotalPriceUSD);
   if (pricePerNightUSD === undefined || totalPriceUSD === undefined) return null;
 
   const sourceBookingUrl = usableHttpUrl(property.link);

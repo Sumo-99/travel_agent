@@ -229,6 +229,38 @@ describe("searchHotels", () => {
     ]));
   });
 
+  it("skips offers when deriving a price produces a non-finite value", async () => {
+    vi.spyOn(client, "serpApiGet").mockResolvedValue({
+      properties: [
+        {
+          property_token: "overflowing-total",
+          name: "Overflowing Total Hotel",
+          rate_per_night: { extracted_lowest: Number.MAX_VALUE },
+        },
+        {
+          property_token: "valid-offer",
+          name: "Valid Hotel",
+          rate_per_night: { extracted_lowest: 125 },
+        },
+      ],
+    });
+
+    const offers = await searchHotels({
+      cityCode: "NYC",
+      checkInDate: "2026-12-01",
+      checkOutDate: "2026-12-03",
+      travelers: 1,
+    });
+
+    expect(offers).toEqual([
+      expect.objectContaining({
+        id: "valid-offer",
+        pricePerNightUSD: 125,
+        totalPriceUSD: 250,
+      }),
+    ]);
+  });
+
   it("returns no offers when the top-level properties field is absent or malformed", async () => {
     const spy = vi.spyOn(client, "serpApiGet");
 
