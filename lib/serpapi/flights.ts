@@ -26,7 +26,7 @@ interface SerpBookingOption {
   together?: {
     book_with?: string;
     airline?: boolean;
-    booking_request?: { url?: string };
+    booking_request?: { url?: string; post_data?: unknown };
   };
 }
 
@@ -108,7 +108,14 @@ async function fetchBookingLink(bookingToken: string): Promise<{ url?: string; i
 
   const option = getArrayField<SerpBookingOption | null>(response, "booking_options")
     .map((bookingOption) => bookingOption?.together)
-    .find((together) => isUsableString(together?.booking_request?.url));
+    .find((together) => {
+      const bookingRequest = together?.booking_request;
+      return Boolean(
+        isRecord(bookingRequest) &&
+          !("post_data" in bookingRequest) &&
+          isUsableString(bookingRequest.url),
+      );
+    });
   const url = trimUsableString(option?.booking_request?.url);
   if (!url) return {};
 
@@ -133,7 +140,9 @@ export async function searchFlights(args: SearchFlightsToolArgs): Promise<RawFli
     gl: "us",
   });
 
-  const maxResults = args.maxResults ?? 10;
+  const maxResults = typeof args.maxResults === "number" && Number.isFinite(args.maxResults) && args.maxResults > 0
+    ? Math.max(1, Math.floor(args.maxResults))
+    : 10;
   const outboundOptions = [
     ...getArrayField<SerpFlightItinerary | null>(response, "best_flights"),
     ...getArrayField<SerpFlightItinerary | null>(response, "other_flights"),
@@ -178,7 +187,12 @@ export async function searchFlights(args: SearchFlightsToolArgs): Promise<RawFli
 
       if (emittedBookingTokens.has(bookingToken)) continue;
       emittedBookingTokens.add(bookingToken);
-      const bookingLink = await fetchBookingLink(bookingToken);
+      let bookingLink: { url?: string; isDirect?: boolean } = {};
+      try {
+        bookingLink = await fetchBookingLink(bookingToken);
+      } catch {
+        // Keep the normalized offer so its carrier or Google Flights fallback can be used.
+      }
 
       offers.push({
         id: bookingToken,

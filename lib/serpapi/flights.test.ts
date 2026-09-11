@@ -172,6 +172,130 @@ describe("searchFlights", () => {
     expect(spy).toHaveBeenCalledTimes(3);
   });
 
+  it("does not expose booking requests that require POST data as source links", async () => {
+    const spy = vi.spyOn(client, "serpApiGet");
+    spy.mockResolvedValueOnce({
+      best_flights: [{
+        flights: [{
+          departure_airport: { id: "JFK", time: "2026-11-03 08:00" },
+          arrival_airport: { id: "LAX", time: "2026-11-03 11:20" },
+          airline: "Delta",
+          flight_number: "DL 204",
+        }],
+        total_duration: 380,
+        departure_token: "departure-token-post-data",
+      }],
+    });
+    spy.mockResolvedValueOnce({
+      best_flights: [{
+        flights: [{
+          departure_airport: { id: "LAX", time: "2026-11-10 13:00" },
+          arrival_airport: { id: "JFK", time: "2026-11-10 21:15" },
+          airline: "Delta",
+          flight_number: "DL 310",
+        }],
+        total_duration: 315,
+        price: 412,
+        booking_token: "booking-token-post-data",
+      }],
+    });
+    spy.mockResolvedValueOnce({
+      booking_options: [{
+        together: {
+          airline: true,
+          booking_request: {
+            url: "https://delta.com/booking/post-data",
+            post_data: "foo=bar",
+          },
+        },
+      }],
+    });
+
+    const offers = await searchFlights({
+      origin: "JFK",
+      destination: "LAX",
+      departureDate: "2026-11-03",
+      returnDate: "2026-11-10",
+      travelers: 1,
+      cabinClass: "ECONOMY",
+    });
+
+    expect(offers).toHaveLength(1);
+    expect(offers[0].sourceBookingUrl).toBeUndefined();
+    expect(offers[0].sourceIsDirect).toBeUndefined();
+  });
+
+  it("keeps an offer when its booking-options lookup fails and continues with later offers", async () => {
+    const spy = vi.spyOn(client, "serpApiGet");
+    spy.mockResolvedValueOnce({
+      best_flights: [{
+        flights: [{
+          departure_airport: { id: "JFK", time: "2026-11-03 08:00" },
+          arrival_airport: { id: "LAX", time: "2026-11-03 11:20" },
+          airline: "Delta",
+          flight_number: "DL 204",
+        }],
+        total_duration: 380,
+        departure_token: "departure-token-booking-failure",
+      }],
+    });
+    spy.mockResolvedValueOnce({
+      best_flights: [
+        {
+          flights: [{
+            departure_airport: { id: "LAX", time: "2026-11-10 13:00" },
+            arrival_airport: { id: "JFK", time: "2026-11-10 21:15" },
+            airline: "Delta",
+            flight_number: "DL 310",
+          }],
+          total_duration: 315,
+          price: 412,
+          booking_token: "booking-token-failure",
+        },
+        {
+          flights: [{
+            departure_airport: { id: "LAX", time: "2026-11-10 14:00" },
+            arrival_airport: { id: "JFK", time: "2026-11-10 22:15" },
+            airline: "Delta",
+            flight_number: "DL 311",
+          }],
+          total_duration: 375,
+          price: 450,
+          booking_token: "booking-token-after-failure",
+        },
+      ],
+    });
+    spy.mockRejectedValueOnce(new Error("booking options unavailable"));
+    spy.mockResolvedValueOnce({
+      booking_options: [{
+        together: {
+          airline: true,
+          booking_request: { url: "https://delta.com/booking/after-failure" },
+        },
+      }],
+    });
+
+    const offers = await searchFlights({
+      origin: "JFK",
+      destination: "LAX",
+      departureDate: "2026-11-03",
+      returnDate: "2026-11-10",
+      travelers: 1,
+      cabinClass: "ECONOMY",
+      maxResults: 2,
+    });
+
+    expect(offers.map((offer) => offer.id)).toEqual([
+      "booking-token-failure",
+      "booking-token-after-failure",
+    ]);
+    expect(offers[0].sourceBookingUrl).toBeUndefined();
+    expect(offers[1]).toMatchObject({
+      sourceBookingUrl: "https://delta.com/booking/after-failure",
+      sourceIsDirect: true,
+    });
+  });
+
   it("skips incomplete, zero-priced, or tokenless return options and respects maxResults", async () => {
     const spy = vi.spyOn(client, "serpApiGet");
     spy.mockResolvedValueOnce({
@@ -600,5 +724,94 @@ describe("searchFlights", () => {
     expect(offers).toHaveLength(1);
     expect(offers[0].id).toBe("booking-token-duplicate");
     expect(spy).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, undefined])(
+    "defaults invalid maxResults %s to 10",
+    async (maxResults) => {
+      const spy = vi.spyOn(client, "serpApiGet");
+      spy.mockResolvedValueOnce({
+        best_flights: [{
+          flights: [{
+            departure_airport: { id: "JFK", time: "2026-11-03 08:00" },
+            arrival_airport: { id: "LAX", time: "2026-11-03 11:20" },
+            airline: "Delta",
+            flight_number: "DL 204",
+          }],
+          total_duration: 380,
+          departure_token: "departure-token-max-results-normalization",
+        }],
+      });
+      spy.mockResolvedValueOnce({
+        best_flights: Array.from({ length: 11 }, (_, index) => ({
+          flights: [{
+            departure_airport: { id: "LAX", time: `2026-11-10 13:${String(index).padStart(2, "0")}` },
+            arrival_airport: { id: "JFK", time: "2026-11-10 21:15" },
+            airline: "Delta",
+            flight_number: `DL ${310 + index}`,
+          }],
+          total_duration: 315,
+          price: 400 + index,
+          booking_token: `booking-token-max-results-${index}`,
+        })),
+      });
+      for (let index = 0; index < 10; index += 1) {
+        spy.mockResolvedValueOnce({ booking_options: [] });
+      }
+
+      const offers = await searchFlights({
+        origin: "JFK",
+        destination: "LAX",
+        departureDate: "2026-11-03",
+        returnDate: "2026-11-10",
+        travelers: 1,
+        cabinClass: "ECONOMY",
+        maxResults,
+      });
+
+      expect(offers).toHaveLength(10);
+    },
+  );
+
+  it("floors positive fractional maxResults after normalization", async () => {
+    const spy = vi.spyOn(client, "serpApiGet");
+    spy.mockResolvedValueOnce({
+      best_flights: [{
+        flights: [{
+          departure_airport: { id: "JFK", time: "2026-11-03 08:00" },
+          arrival_airport: { id: "LAX", time: "2026-11-03 11:20" },
+          airline: "Delta",
+          flight_number: "DL 204",
+        }],
+        total_duration: 380,
+        departure_token: "departure-token-fractional-max-results",
+      }],
+    });
+    spy.mockResolvedValueOnce({
+      best_flights: [0, 1, 2].map((index) => ({
+        flights: [{
+          departure_airport: { id: "LAX", time: `2026-11-10 13:0${index}` },
+          arrival_airport: { id: "JFK", time: "2026-11-10 21:15" },
+          airline: "Delta",
+          flight_number: `DL ${310 + index}`,
+        }],
+        total_duration: 315,
+        price: 400 + index,
+        booking_token: `booking-token-fractional-${index}`,
+      })),
+    });
+    spy.mockResolvedValueOnce({ booking_options: [] });
+
+    const offers = await searchFlights({
+      origin: "JFK",
+      destination: "LAX",
+      departureDate: "2026-11-03",
+      returnDate: "2026-11-10",
+      travelers: 1,
+      cabinClass: "ECONOMY",
+      maxResults: 1.9,
+    });
+
+    expect(offers).toHaveLength(1);
   });
 });
