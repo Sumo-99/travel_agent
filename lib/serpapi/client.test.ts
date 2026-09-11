@@ -3,6 +3,7 @@ import { serpApiGet } from "@/lib/serpapi/client";
 
 describe("serpApiGet", () => {
   const originalFetch = global.fetch;
+  const originalApiKey = process.env.SERPAPI_API_KEY;
 
   beforeEach(() => {
     process.env.SERPAPI_API_KEY = "test-key";
@@ -10,6 +11,11 @@ describe("serpApiGet", () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+    if (originalApiKey === undefined) {
+      delete process.env.SERPAPI_API_KEY;
+    } else {
+      process.env.SERPAPI_API_KEY = originalApiKey;
+    }
     vi.restoreAllMocks();
   });
 
@@ -44,7 +50,7 @@ describe("serpApiGet", () => {
     }) as unknown as typeof fetch;
 
     await expect(serpApiGet({ engine: "google_flights" })).rejects.toThrow(
-      "SerpApi request failed: 500",
+      "SerpApi request failed: 500 server error",
     );
   });
 });

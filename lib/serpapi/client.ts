@@ -12,7 +12,7 @@ export async function serpApiGet<T>(params: Record<string, string>): Promise<T> 
 
   const response = await fetch(`${SERPAPI_BASE_URL}?${query}`);
   if (!response.ok) {
-    throw new Error(`SerpApi request failed: ${response.status}`);
+    throw new Error(`SerpApi request failed: ${response.status} ${await response.text()}`);
   }
 
   const data = (await response.json()) as T & SerpApiErrorShape;
