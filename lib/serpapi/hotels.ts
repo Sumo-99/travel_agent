@@ -103,13 +103,14 @@ function normalizeProperty(property: SerpHotelProperty, args: SearchHotelsToolAr
   const rawTotalRate = property.total_rate?.extracted_lowest;
   const nightlyRate = positiveFiniteNumber(rawNightlyRate);
   const totalRate = positiveFiniteNumber(rawTotalRate);
-  if ((rawNightlyRate !== undefined && nightlyRate === undefined) || (rawTotalRate !== undefined && totalRate === undefined)) {
+  if ((rawNightlyRate !== undefined && rawNightlyRate !== null && nightlyRate === undefined) ||
+    (rawTotalRate !== undefined && rawTotalRate !== null && totalRate === undefined)) {
     return null;
   }
 
   const nights = numberOfNights(args);
-  const derivedPricePerNightUSD = nightlyRate ?? (rawTotalRate === undefined || totalRate === undefined ? undefined : totalRate / nights);
-  const derivedTotalPriceUSD = totalRate ?? (rawNightlyRate === undefined || nightlyRate === undefined ? undefined : nightlyRate * nights);
+  const derivedPricePerNightUSD = nightlyRate ?? (rawTotalRate === undefined || rawTotalRate === null || totalRate === undefined ? undefined : totalRate / nights);
+  const derivedTotalPriceUSD = totalRate ?? (rawNightlyRate === undefined || rawNightlyRate === null || nightlyRate === undefined ? undefined : nightlyRate * nights);
   const pricePerNightUSD = positiveFiniteNumber(derivedPricePerNightUSD);
   const totalPriceUSD = positiveFiniteNumber(derivedTotalPriceUSD);
   if (pricePerNightUSD === undefined || totalPriceUSD === undefined) return null;

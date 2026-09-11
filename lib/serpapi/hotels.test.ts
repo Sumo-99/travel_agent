@@ -229,6 +229,62 @@ describe("searchHotels", () => {
     ]));
   });
 
+  it("derives nightly rate when the extracted nightly rate is null", async () => {
+    vi.spyOn(client, "serpApiGet").mockResolvedValue({
+      properties: [
+        {
+          property_token: "null-nightly",
+          name: "Null Nightly Hotel",
+          rate_per_night: { extracted_lowest: null },
+          total_rate: { extracted_lowest: 1000 },
+        },
+      ],
+    });
+
+    const offers = await searchHotels({
+      cityCode: "NYC",
+      checkInDate: "2026-12-01",
+      checkOutDate: "2026-12-05",
+      travelers: 1,
+    });
+
+    expect(offers).toEqual([
+      expect.objectContaining({
+        id: "null-nightly",
+        pricePerNightUSD: 250,
+        totalPriceUSD: 1000,
+      }),
+    ]);
+  });
+
+  it("derives total rate when the extracted total rate is null", async () => {
+    vi.spyOn(client, "serpApiGet").mockResolvedValue({
+      properties: [
+        {
+          property_token: "null-total",
+          name: "Null Total Hotel",
+          rate_per_night: { extracted_lowest: 125 },
+          total_rate: { extracted_lowest: null },
+        },
+      ],
+    });
+
+    const offers = await searchHotels({
+      cityCode: "NYC",
+      checkInDate: "2026-12-01",
+      checkOutDate: "2026-12-05",
+      travelers: 1,
+    });
+
+    expect(offers).toEqual([
+      expect.objectContaining({
+        id: "null-total",
+        pricePerNightUSD: 125,
+        totalPriceUSD: 500,
+      }),
+    ]);
+  });
+
   it("skips offers when deriving a price produces a non-finite value", async () => {
     vi.spyOn(client, "serpApiGet").mockResolvedValue({
       properties: [
